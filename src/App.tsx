@@ -16,7 +16,9 @@ export default function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <strong className="brand">Inventário Móvel</strong>
+        <a className="brand" href="/" aria-label="RTT — Inventário de linhas móveis">
+          <img src="/logo.png" alt="Rema Tip Top" />
+        </a>
         <nav>
           <NavLink to="/" end>
             Linhas

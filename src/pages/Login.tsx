@@ -54,7 +54,8 @@ export default function Login() {
   return (
     <div className="center">
       <div className="card login">
-        <h1>Inventário Móvel</h1>
+        <img className="login-logo" src="/logo.png" alt="Rema Tip Top" />
+        <h1>Inventário de linhas móveis RTT</h1>
         {step === 'password' ? (
           <form onSubmit={submitPassword}>
             <label>
