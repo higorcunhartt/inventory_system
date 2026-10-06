@@ -5,7 +5,7 @@ Sistema web para controle das linhas móveis da empresa e análise de consumo da
 - **Front:** React + Vite (SPA) — `src/`
 - **API:** Netlify Functions (TypeScript) em `/api/*` — `netlify/`
 - **Banco:** Neon (PostgreSQL) — `db/schema.sql`
-- **Auth:** senha + código MFA por e-mail (Resend) → JWT (HS256, 8 h) em cookie `HttpOnly; Secure; SameSite=Strict`
+- **Auth:** senha + código MFA por e-mail (SMTP) → JWT (HS256, 8 h) em cookie `HttpOnly; Secure; SameSite=Strict`
 
 ## Perfis
 
@@ -35,7 +35,9 @@ npm run migrate           # cria as tabelas e o primeiro admin
 npm run dev               # netlify dev: front + functions em http://localhost:8888
 ```
 
-Em `netlify dev` sem `RESEND_API_KEY`, o código MFA é impresso no terminal.
+Para validar o SMTP: `npm run mail:test -- destino@exemplo.com`.
+
+Em `netlify dev` sem SMTP/Resend configurado, o código MFA é impresso no terminal.
 
 ```bash
 npm test                  # parser + API completa contra um Postgres em memória (PGlite)
@@ -48,8 +50,9 @@ npm run build             # typecheck + build de produção
 |---|---|
 | `DATABASE_URL` | Connection string do Neon |
 | `JWT_SECRET` | ≥ 32 caracteres aleatórios |
-| `RESEND_API_KEY` | API key do Resend |
-| `MAIL_FROM` | Remetente, ex.: `Inventário Móvel <no-reply@seudominio.com.br>` (domínio verificado no Resend) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | Servidor SMTP que envia o código MFA (porta 587 = STARTTLS, 465 = TLS) |
+| `MAIL_FROM` | Remetente, ex.: `Inventário Móvel <usuario@seudominio.com.br>` |
+| `RESEND_API_KEY` | Opcional: alternativa ao SMTP |
 
 ## Segurança
 
