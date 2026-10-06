@@ -62,7 +62,7 @@ export default function Lines() {
     <section>
       <header className="page-banner">
         <h1>Inventário de linhas móveis RTT</h1>
-        <p>Controle de linhas, usuários e projetos</p>
+        <p>Controle de linhas de usuários e projetos</p>
       </header>
       <div className="row between wrap">
         <h2>Linhas ({filtered.length}{filtered.length !== lines.length ? ` de ${lines.length}` : ''})</h2>
