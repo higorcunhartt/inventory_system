@@ -86,10 +86,11 @@ test('admin cria operador que precisa trocar a senha', async () => {
 });
 
 test('linhas: admin cadastra, operador só altera usuário/data', async () => {
-  const c = await call('POST', '/lines', { number: '(11) 98765-4321', carrier: 'Vivo', lineType: 'DADOS_VOZ', assigneeName: 'Maria', project: 'Obra A', deliveryDate: '2026-01-15' }, admin);
+  const c = await call('POST', '/lines', { number: '(11) 98765-4321', carrier: 'Vivo', lineType: 'DADOS_VOZ', account: '0371235565', assigneeName: 'Maria', project: 'Obra A', deliveryDate: '2026-01-15' }, admin);
   assert.equal(c.status, 201, JSON.stringify(c.data));
   const id = c.data.line.id;
   assert.equal(c.data.line.number, '11987654321');
+  assert.equal(c.data.line.account, '0371235565');
   assert.equal(c.data.line.deliveryDate, '2026-01-15');
   assert.equal((await call('POST', '/lines', { number: '11987654321', carrier: 'Vivo', lineType: 'DADOS' }, admin)).status, 409);
   assert.equal((await call('POST', '/lines', { number: '11987654321', carrier: 'Vivo', lineType: 'DADOS' }, operator)).status, 403);
@@ -100,6 +101,7 @@ test('linhas: admin cadastra, operador só altera usuário/data', async () => {
   assert.equal(ok.data.line.project, 'Obra A');
   assert.equal((await call('PATCH', `/lines/${id}`, { project: 'Obra B' }, operator)).status, 403);
   assert.equal((await call('PATCH', `/lines/${id}`, { carrier: 'TIM' }, operator)).status, 403);
+  assert.equal((await call('PATCH', `/lines/${id}`, { account: '1' }, operator)).status, 403);
   assert.equal((await call('DELETE', `/lines/${id}`, undefined, operator)).status, 403);
 
   const clear = await call('PATCH', `/lines/${id}`, { assigneeName: '' }, operator);

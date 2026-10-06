@@ -27,6 +27,7 @@ export type Line = {
   number: string;
   carrier: string;
   lineType: 'DADOS' | 'DADOS_VOZ';
+  account: string | null;
   assigneeName: string | null;
   project: string | null;
   deliveryDate: string | null;

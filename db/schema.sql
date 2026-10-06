@@ -27,6 +27,7 @@ create table if not exists lines (
   number text not null unique,
   carrier text not null,
   line_type text not null check (line_type in ('DADOS', 'DADOS_VOZ')),
+  account text,
   assignee_name text,
   project text,
   delivery_date date,
@@ -34,6 +35,8 @@ create table if not exists lines (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table lines add column if not exists account text;
 
 create table if not exists line_history (
   id bigserial primary key,

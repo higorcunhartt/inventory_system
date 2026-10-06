@@ -9,6 +9,7 @@ const toLine = (r: Record<string, any>) => ({
   number: r.number,
   carrier: r.carrier,
   lineType: r.line_type,
+  account: r.account,
   assigneeName: r.assignee_name,
   project: r.project,
   deliveryDate: r.delivery_date,
@@ -17,7 +18,7 @@ const toLine = (r: Record<string, any>) => ({
 });
 
 const OPERATOR_FIELDS = new Set(['assigneeName', 'deliveryDate']);
-const ADMIN_FIELDS = new Set(['number', 'carrier', 'lineType', 'assigneeName', 'project', 'deliveryDate', 'notes']);
+const ADMIN_FIELDS = new Set(['number', 'carrier', 'lineType', 'account', 'assigneeName', 'project', 'deliveryDate', 'notes']);
 
 function requireNumber(v: unknown) {
   const n = normalizeNumber(reqStr(v, 'número', 30));
@@ -35,6 +36,7 @@ const HEADERS: Array<[string, RegExp]> = [
   ['number', /^(numero|linha|telefone|celular)/],
   ['carrier', /operadora/],
   ['type', /^tipo/],
+  ['account', /conta/],
   ['assignee', /usuario|responsavel|colaborador/],
   ['project', /projeto|local/],
   ['delivery', /entrega/],
@@ -53,7 +55,7 @@ export const lineRoutes: Route[] = [
     '/lines',
     async ({ req }) => {
       await requireUser(req);
-      const rows = await sql`select id, number, carrier, line_type, assignee_name, project,
+      const rows = await sql`select id, number, carrier, line_type, account, assignee_name, project,
                                     to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at
                              from lines order by number`;
       return json({ lines: rows.map(toLine) });
@@ -69,21 +71,22 @@ export const lineRoutes: Route[] = [
       const number = requireNumber(b.number);
       const carrier = reqStr(b.carrier, 'operadora', 60);
       const type = lineType(b.lineType);
+      const account = str(b.account, 'conta', { max: 40 });
       const assignee = str(b.assigneeName, 'usuário', { max: 120 });
       const project = str(b.project, 'projeto', { max: 120 });
       const delivery = isoDate(b.deliveryDate, 'data de entrega');
       const notes = str(b.notes, 'observações', { max: 500 });
       const rows = await sql`
         with ins as (
-          insert into lines (number, carrier, line_type, assignee_name, project, delivery_date, notes)
-          values (${number}, ${carrier}, ${type}, ${assignee}, ${project}, ${delivery}::date, ${notes})
+          insert into lines (number, carrier, line_type, account, assignee_name, project, delivery_date, notes)
+          values (${number}, ${carrier}, ${type}, ${account}, ${assignee}, ${project}, ${delivery}::date, ${notes})
           on conflict (number) do nothing
           returning *
         ), h as (
           insert into line_history (line_id, action, assignee_name, project, delivery_date, changed_by_name)
           select id, 'create', assignee_name, project, delivery_date, ${user.name} from ins
         )
-        select id, number, carrier, line_type, assignee_name, project,
+        select id, number, carrier, line_type, account, assignee_name, project,
                to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at from ins`;
       if (!rows.length) throw new HttpError(409, 'Já existe uma linha com este número');
       return json({ line: toLine(rows[0]) }, 201);
@@ -132,6 +135,7 @@ export const lineRoutes: Route[] = [
           number,
           carrier: carrier.slice(0, 60),
           line_type: /voz/i.test(cell('type')) ? 'DADOS_VOZ' : 'DADOS',
+          account: cell('account').slice(0, 40) || null,
           assignee_name: cell('assignee').slice(0, 120) || null,
           project: cell('project').slice(0, 120) || null,
           delivery_date: delivery,
@@ -143,10 +147,10 @@ export const lineRoutes: Route[] = [
       if (valid.length) {
         const out = await sql`
           with ins as (
-            insert into lines (number, carrier, line_type, assignee_name, project, delivery_date, notes)
-            select x.number, x.carrier, x.line_type, x.assignee_name, x.project, x.delivery_date, x.notes
+            insert into lines (number, carrier, line_type, account, assignee_name, project, delivery_date, notes)
+            select x.number, x.carrier, x.line_type, x.account, x.assignee_name, x.project, x.delivery_date, x.notes
             from jsonb_to_recordset(${JSON.stringify(valid)}::jsonb)
-              as x(number text, carrier text, line_type text, assignee_name text, project text, delivery_date date, notes text)
+              as x(number text, carrier text, line_type text, account text, assignee_name text, project text, delivery_date date, notes text)
             on conflict (number) do nothing
             returning *
           ), h as (
@@ -175,6 +179,7 @@ export const lineRoutes: Route[] = [
       const number = has('number') ? requireNumber(b.number) : null;
       const carrier = has('carrier') ? reqStr(b.carrier, 'operadora', 60) : null;
       const type = has('lineType') ? lineType(b.lineType) : null;
+      const account = has('account') ? str(b.account, 'conta', { max: 40 }) : null;
       const assignee = has('assigneeName') ? str(b.assigneeName, 'usuário', { max: 120 }) : null;
       const project = has('project') ? str(b.project, 'projeto', { max: 120 }) : null;
       const delivery = has('deliveryDate') ? isoDate(b.deliveryDate, 'data de entrega') : null;
@@ -188,6 +193,7 @@ export const lineRoutes: Route[] = [
               number = case when ${has('number')}::boolean then ${number}::text else number end,
               carrier = case when ${has('carrier')}::boolean then ${carrier}::text else carrier end,
               line_type = case when ${has('lineType')}::boolean then ${type}::text else line_type end,
+              account = case when ${has('account')}::boolean then ${account}::text else account end,
               assignee_name = case when ${has('assigneeName')}::boolean then ${assignee}::text else assignee_name end,
               project = case when ${has('project')}::boolean then ${project}::text else project end,
               delivery_date = case when ${has('deliveryDate')}::boolean then ${delivery}::date else delivery_date end,
@@ -199,7 +205,7 @@ export const lineRoutes: Route[] = [
             insert into line_history (line_id, action, assignee_name, project, delivery_date, changed_by_name)
             select id, 'update', assignee_name, project, delivery_date, ${user.name} from upd
           )
-          select id, number, carrier, line_type, assignee_name, project,
+          select id, number, carrier, line_type, account, assignee_name, project,
                  to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at from upd`;
       } catch (err: any) {
         if (err?.code === '23505') throw new HttpError(409, 'Já existe uma linha com este número');

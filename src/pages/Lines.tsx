@@ -7,8 +7,8 @@ import { formatDate, formatPhone } from '../format';
 const CARRIERS = ['Vivo', 'Claro', 'TIM', 'Oi', 'Algar'];
 const TYPE_LABEL = { DADOS: 'Dados', DADOS_VOZ: 'Dados e Voz' } as const;
 
-type Form = { number: string; carrier: string; lineType: 'DADOS' | 'DADOS_VOZ'; assigneeName: string; project: string; deliveryDate: string; notes: string };
-const emptyForm: Form = { number: '', carrier: 'Vivo', lineType: 'DADOS_VOZ', assigneeName: '', project: '', deliveryDate: '', notes: '' };
+type Form = { number: string; carrier: string; lineType: 'DADOS' | 'DADOS_VOZ'; account: string; assigneeName: string; project: string; deliveryDate: string; notes: string };
+const emptyForm: Form = { number: '', carrier: 'Vivo', lineType: 'DADOS_VOZ', account: '', assigneeName: '', project: '', deliveryDate: '', notes: '' };
 
 export default function Lines() {
   const { user } = useAuth();
@@ -44,7 +44,7 @@ export default function Lines() {
       if (type && l.lineType !== type) return false;
       if (onlyFree && l.assigneeName) return false;
       if (!t) return true;
-      return (digits && l.number.includes(digits)) || (l.assigneeName ?? '').toLowerCase().includes(t) || (l.project ?? '').toLowerCase().includes(t);
+      return (digits && l.number.includes(digits)) || (l.account ?? '').includes(t) || (l.assigneeName ?? '').toLowerCase().includes(t) || (l.project ?? '').toLowerCase().includes(t);
     });
   }, [lines, q, carrier, project, type, onlyFree]);
 
@@ -75,7 +75,7 @@ export default function Lines() {
       </div>
 
       <div className="filters">
-        <input placeholder="Buscar número, usuário ou projeto…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input placeholder="Buscar número, conta, usuário ou projeto…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={carrier} onChange={(e) => setCarrier(e.target.value)} aria-label="Operadora">
           <option value="">Todas as operadoras</option>
           {carriers.map((c) => (
@@ -106,6 +106,7 @@ export default function Lines() {
               <th>Número</th>
               <th>Operadora</th>
               <th>Tipo</th>
+              <th>Conta</th>
               <th>Usuário</th>
               <th>Local (projeto)</th>
               <th>Entrega</th>
@@ -115,14 +116,14 @@ export default function Lines() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={8} className="muted">
                   Carregando…
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={8} className="muted">
                   Nenhuma linha encontrada.
                 </td>
               </tr>
@@ -134,6 +135,7 @@ export default function Lines() {
                 <td>
                   <span className={`chip ${l.lineType === 'DADOS_VOZ' ? 'blue' : 'gray'}`}>{TYPE_LABEL[l.lineType]}</span>
                 </td>
+                <td className="mono">{l.account ?? '—'}</td>
                 <td>{l.assigneeName ?? <span className="muted">Sem usuário</span>}</td>
                 <td>{l.project ?? '—'}</td>
                 <td>{formatDate(l.deliveryDate)}</td>
@@ -185,7 +187,7 @@ export default function Lines() {
 function LineForm({ line, admin, carriers, projects, onClose, onSaved }: { line: Line | null; admin: boolean; carriers: string[]; projects: string[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<Form>(
     line
-      ? { number: line.number, carrier: line.carrier, lineType: line.lineType, assigneeName: line.assigneeName ?? '', project: line.project ?? '', deliveryDate: line.deliveryDate ?? '', notes: line.notes ?? '' }
+      ? { number: line.number, carrier: line.carrier, lineType: line.lineType, account: line.account ?? '', assigneeName: line.assigneeName ?? '', project: line.project ?? '', deliveryDate: line.deliveryDate ?? '', notes: line.notes ?? '' }
       : emptyForm,
   );
   const [error, setError] = useState('');
@@ -230,6 +232,10 @@ function LineForm({ line, admin, carriers, projects, onClose, onSaved }: { line:
             <option value="DADOS">Dados</option>
             <option value="DADOS_VOZ">Dados e Voz</option>
           </select>
+        </label>
+        <label>
+          Número da conta (fatura)
+          <input value={f.account} onChange={set('account')} disabled={locked} />
         </label>
         <label>
           Usuário da linha
@@ -289,7 +295,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   return (
     <Modal title="Importar linhas (CSV)" onClose={onClose}>
       <p className="muted">
-        Colunas: <strong>Número; Operadora; Tipo; Usuário; Projeto; Data de entrega</strong> (Tipo: "Dados" ou "Dados e Voz"; data: DD/MM/AAAA). Números já cadastrados são ignorados.
+        Colunas: <strong>Número; Operadora; Tipo; Conta; Usuário; Projeto; Data de entrega; Observações</strong> (Tipo: "Dados" ou "Dados e Voz"; data: DD/MM/AAAA). Números já cadastrados são ignorados.
       </p>
       <input
         type="file"
