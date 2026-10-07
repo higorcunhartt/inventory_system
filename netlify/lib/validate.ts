@@ -25,9 +25,37 @@ export function email(v: unknown): string {
   return e;
 }
 
+const COMMON_PASSWORDS = new Set([
+  'password', 'password1', 'password12', 'password123', 'passw0rd123', 'senha', 'senha123', 'senha1234', 'senha12345', 'senha123456',
+  'mudar123', 'mudar1234', 'mudar12345', 'admin', 'admin123', 'admin1234', 'admin12345', 'administrador', 'qwerty', 'qwerty123',
+  'qwertyuiop', 'qwerty12345', 'brasil', 'brasil123', 'brasil1234', 'brasil12345', 'inventario', 'inventario123', 'inventario1234',
+  'rtt', 'rtt123', 'rtt1234', 'rtt12345', 'rttshop', 'rttshop123', 'rttadmin', 'rttadmin123', 'abc123', 'abc1234567', 'abcdefghij',
+  '1234567890', '12345678910', '123456789012', '0123456789', '1q2w3e4r5t', '1q2w3e4r5t6y', 'iloveyou123', 'welcome123', 'letmein123',
+  'trocar123', 'trocar1234', 'trocar12345', 'temporaria', 'temporaria1', 'temporaria123', 'novasenha', 'novasenha1', 'novasenha123',
+]);
+const COMMON_ROOTS = ['password', 'senha', 'admin', 'qwerty', 'mudar', 'trocar', 'brasil', 'inventario', 'welcome', 'letmein', 'temporaria', 'novasenha', 'rttshop', 'rtt'];
+
+/** Senha digitada no login: tratada exatamente como foi informada (sem trim). */
+export function loginPassword(v: unknown): string {
+  if (typeof v !== 'string' || v.length === 0) throw new HttpError(400, 'Campo obrigatório: senha');
+  if (v.length > 128) throw new HttpError(400, 'Senha inválida');
+  return v;
+}
+
+/** Política de definição de senha: tamanho (em bytes, por causa do limite de 72 do bcrypt) e bloqueio de senhas triviais. */
 export function password(v: unknown): string {
   if (typeof v !== 'string' || v.length < 10) throw new HttpError(400, 'A senha deve ter no mínimo 10 caracteres');
-  if (v.length > 128) throw new HttpError(400, 'Senha muito longa');
+  if (Buffer.byteLength(v, 'utf8') > 72) throw new HttpError(400, 'A senha deve ter no máximo 72 bytes (cerca de 72 caracteres comuns)');
+  const lower = v.toLowerCase();
+  const stripped = lower.replace(/[\d\W_]+$/g, '');
+  if (
+    COMMON_PASSWORDS.has(lower) ||
+    COMMON_ROOTS.includes(stripped) ||
+    /^(.)\1+$/.test(v) ||
+    new Set(v).size < 4
+  ) {
+    throw new HttpError(400, 'Senha muito comum ou previsível. Escolha uma frase mais longa e única.');
+  }
   return v;
 }
 

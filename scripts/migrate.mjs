@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
+import { splitSql } from './sql-split.mjs';
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL não definida (crie o arquivo .env a partir de .env.example).');
@@ -9,7 +10,7 @@ if (!process.env.DATABASE_URL) {
 const sql = neon(process.env.DATABASE_URL);
 
 const schema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8');
-for (const stmt of schema.split(';').map((s) => s.trim()).filter(Boolean)) {
+for (const stmt of splitSql(schema)) {
   await sql.query(stmt);
 }
 console.log('Schema aplicado.');
@@ -24,8 +25,8 @@ if (n === 0) {
     process.exit(1);
   } else {
     const hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
-    await sql`insert into users (email, name, password_hash, role)
-              values (${ADMIN_EMAIL.toLowerCase()}, ${ADMIN_NAME || 'Administrador'}, ${hash}, 'admin')`;
+    await sql`insert into users (email, name, password_hash, role, must_change_password)
+              values (${ADMIN_EMAIL.toLowerCase()}, ${ADMIN_NAME || 'Administrador'}, ${hash}, 'admin', true)`;
     console.log(`Admin criado: ${ADMIN_EMAIL.toLowerCase()}`);
   }
 } else {

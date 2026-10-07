@@ -74,3 +74,9 @@ create table if not exists consumption (
   unique (invoice_id, number)
 );
 create index if not exists consumption_number_idx on consumption (number);
+
+create table if not exists rate_limits (
+  key text primary key,
+  count int not null,
+  reset_at timestamptz not null
+);
