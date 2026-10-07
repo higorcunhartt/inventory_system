@@ -71,3 +71,64 @@ test('parseInvoice lê CSV em latin1', async () => {
   assert.equal(r.records.length, 1);
   assert.equal(r.detectedCarrier, 'Claro');
 });
+
+// ---------- AUD-010 / AUD-016: limites e validação numérica ----------
+import { toNumber, checkZipLimits, UserFacingParseError, LIMITS } from '../netlify/lib/invoice-parser.ts';
+
+test('AUD-016: notação científica e valores fora de faixa não viram números errados', () => {
+  assert.equal(toNumber('1.5e3'), 1500);
+  assert.equal(toNumber('1e+21'), null);
+  assert.equal(toNumber('9'.repeat(400)), null);
+  assert.equal(toNumber('R$ 1.234,56'), 1234.56);
+  assert.equal(toNumber(''), 0);
+  assert.equal(toNumber('-'), 0);
+});
+
+test('AUD-016: parseTable conta valores inválidos e não os soma', () => {
+  const rows = parseCsv(`Linha;Minutos;Valor\n11987654321;10;${'9'.repeat(400)}\n11987654322;5;1e+21\n11987654323;1;10,00\n`);
+  const r = parseTable(rows);
+  assert.equal(r.invalidCount, 2);
+  assert.equal(r.records.find((x) => x.number === '11987654323')!.amount, 10);
+  assert.equal(r.records.find((x) => x.number === '11987654321')!.amount, 0);
+  assert.ok(r.warnings.some((w) => /ilegíveis/.test(w)));
+});
+
+test('AUD-010: sequência gigante de dígitos em PDF é processada em tempo curto', () => {
+  for (const n of [20_000, 80_000, 200_000]) {
+    const t0 = performance.now();
+    const { records } = parseInvoiceText(`(11) 98765-4321\n${'1'.repeat(n)}x\nChamada 00:01:00\nInternet 2 GB\n`);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 300, `${n} dígitos levou ${ms.toFixed(0)} ms`);
+    assert.equal(records[0].voiceMinutes, 1);
+    assert.equal(records[0].dataMb, 2048);
+  }
+});
+
+function fakeZip(entries: Array<[string, number]>, eocdOnly = false): Uint8Array {
+  const parts: Buffer[] = [];
+  let cdSize = 0;
+  for (const [name, size] of entries) {
+    const h = Buffer.alloc(46 + name.length);
+    h.writeUInt32LE(0x02014b50, 0);
+    h.writeUInt32LE(size, 24);
+    h.writeUInt16LE(name.length, 28);
+    h.write(name, 46);
+    parts.push(h);
+    cdSize += h.length;
+  }
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cdSize, 12);
+  eocd.writeUInt32LE(0, 16);
+  return new Uint8Array(Buffer.concat(eocdOnly ? [eocd] : [...parts, eocd]));
+}
+
+test('AUD-010: checkZipLimits bloqueia bomba de compressão e arquivos que não são ZIP', () => {
+  checkZipLimits(fakeZip([['xl/workbook.xml', 1000], ['xl/worksheets/sheet1.xml', 5_000_000]]));
+  assert.throws(() => checkZipLimits(fakeZip([['xl/worksheets/sheet1.xml', 2 * 1024 * 1024 * 1024]])), UserFacingParseError);
+  assert.throws(() => checkZipLimits(fakeZip([['a', LIMITS.MAX_ZIP_UNCOMPRESSED], ['b', 10]])), /descompactada/);
+  assert.throws(() => checkZipLimits(fakeZip(Array.from({ length: LIMITS.MAX_ZIP_ENTRIES + 1 }, (_, i) => [`f${i}`, 1] as [string, number]))), /estrutura interna/);
+  assert.throws(() => checkZipLimits(new Uint8Array(Buffer.from('isto não é um zip nem de longe, é só texto comum aqui'))), UserFacingParseError);
+  assert.throws(() => checkZipLimits(new Uint8Array(5)), UserFacingParseError);
+});

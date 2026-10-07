@@ -63,6 +63,7 @@ export const consumptionRoutes: Route[] = [
         detectedMonth: parsed.detectedMonth,
         detectedCarrier: parsed.detectedCarrier,
         warnings: parsed.warnings,
+        invalidCount: parsed.invalidCount,
         totals: {
           lines: parsed.records.length,
           registered: parsed.records.filter((r) => knownSet.has(r.number)).length,
@@ -86,6 +87,9 @@ export const consumptionRoutes: Route[] = [
       const carrier = reqStr(body.carrier, 'operadora', 60);
       const reference = month(body.referenceMonth, 'mês de referência');
       if (!parsed.records.length) throw new HttpError(422, 'Nenhuma linha com consumo foi encontrada no arquivo');
+      if (parsed.invalidCount > 0) {
+        throw new HttpError(422, `${parsed.invalidCount} valor(es) numérico(s) do arquivo estão ilegíveis ou fora de faixa. Corrija o arquivo e envie novamente.`);
+      }
       const hash = createHash('sha256').update(bytes).digest('hex');
       const total = parsed.records.reduce((s, r) => s + r.amount, 0);
       const rows = parsed.records.map((r) => ({ number: r.number, voice: r.voiceMinutes, data: r.dataMb, amount: r.amount }));
