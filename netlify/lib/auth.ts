@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { sql } from './db.ts';
 import { HttpError } from './http.ts';
+import { clearKey, hit } from './ratelimit.ts';
 
 const SESSION_SECONDS = 8 * 60 * 60;
 const COOKIE = 'session';
@@ -111,4 +112,20 @@ export async function currentSessionUserId(req: Request): Promise<string | null>
   } catch {
     return null;
   }
+}
+
+/**
+ * Reautenticação ("step-up") para ações de alto risco: exige a senha do próprio usuário no pedido.
+ * Quem só possui um cookie de sessão roubado não consegue concluir a ação.
+ */
+export async function requireReauth(userId: string, confirmPassword: unknown): Promise<void> {
+  if (typeof confirmPassword !== 'string' || !confirmPassword) {
+    throw new HttpError(403, 'Confirme sua senha para continuar', 'REAUTH_REQUIRED');
+  }
+  if ((await hit(`stepup:${userId}`, 15 * 60)) > 5) throw new HttpError(429, 'Muitas tentativas. Tente novamente em alguns minutos.');
+  const [u] = await sql`select password_hash from users where id = ${userId}`;
+  if (!u || !(await checkPassword(confirmPassword, u.password_hash))) {
+    throw new HttpError(403, 'Senha de confirmação incorreta', 'REAUTH_FAILED');
+  }
+  await clearKey(`stepup:${userId}`);
 }

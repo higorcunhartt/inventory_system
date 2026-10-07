@@ -1,7 +1,7 @@
 import { sql } from '../lib/db.ts';
 import { HttpError, json, readJson, type Route } from '../lib/http.ts';
-import { hashPassword, requireUser } from '../lib/auth.ts';
-import { email, password, reqStr } from '../lib/validate.ts';
+import { hashPassword, requireReauth, requireUser } from '../lib/auth.ts';
+import { corporateEmail, password, reqStr } from '../lib/validate.ts';
 
 const ROLES = ['admin', 'operator'];
 
@@ -30,13 +30,15 @@ export const userRoutes: Route[] = [
     'POST',
     '/users',
     async ({ req }) => {
-      await requireUser(req, { roles: ['admin'] });
+      const me = await requireUser(req, { roles: ['admin'] });
       const body = await readJson(req);
       const name = reqStr(body.name, 'nome', 120);
-      const mail = email(body.email);
+      const mail = corporateEmail(body.email);
       const role = body.role ?? 'operator';
       if (!ROLES.includes(role)) throw new HttpError(400, 'Perfil inválido');
-      const hash = await hashPassword(password(body.password));
+      const pwd = password(body.password);
+      await requireReauth(me.id, body.confirmPassword);
+      const hash = await hashPassword(pwd);
       const rows = await sql`insert into users (email, name, password_hash, role, must_change_password)
                              values (${mail}, ${name}, ${hash}, ${role}, true)
                              on conflict (email) do nothing
@@ -62,8 +64,13 @@ export const userRoutes: Route[] = [
         throw new HttpError(400, 'Você não pode alterar seu próprio perfil ou status');
       }
       const name = hasName ? reqStr(body.name, 'nome', 120) : null;
-      const hash = hasPass ? await hashPassword(password(body.password)) : null;
-      const rows = await sql`update users set
+      const newPassword = hasPass ? password(body.password) : null;
+      // Mudar papel, status ou senha de alguém exige confirmar a senha do administrador.
+      if (hasRole || hasActive || hasPass) await requireReauth(me.id, body.confirmPassword);
+      const hash = newPassword ? await hashPassword(newPassword) : null;
+      let rows;
+      try {
+        rows = await sql`update users set
           name = case when ${hasName}::boolean then ${name}::text else name end,
           role = case when ${hasRole}::boolean then ${body.role ?? null}::text else role end,
           active = case when ${hasActive}::boolean then ${body.active ?? null}::boolean else active end,
@@ -74,6 +81,11 @@ export const userRoutes: Route[] = [
           locked_until = case when ${hasPass}::boolean then null else locked_until end
         where id = ${params.id}
         returning id, email, name, role, active, must_change_password, created_at`;
+      } catch (err: any) {
+        // Gatilho do banco: sempre deve restar ao menos um administrador ativo
+        if (String(err?.message).includes('last_admin')) throw new HttpError(409, 'Deve existir ao menos um administrador ativo');
+        throw err;
+      }
       if (!rows.length) throw new HttpError(404, 'Usuário não encontrado');
       return json({ user: toUser(rows[0]) });
     },

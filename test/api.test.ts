@@ -6,6 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 process.env.JWT_SECRET = 'x'.repeat(48);
 process.env.NETLIFY_DEV = 'true'; // e-mail MFA vai para o console
 delete process.env.RESEND_API_KEY;
+process.env.ALLOWED_EMAIL_DOMAINS = 'x.com';
 
 const { setSql } = await import('../netlify/lib/db.ts');
 const { handle } = await import('../netlify/lib/app.ts');
@@ -46,7 +47,8 @@ let admin = '';
 let operator = '';
 
 before(async () => {
-  for (const stmt of readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8').split(';').map((s) => s.trim()).filter(Boolean)) {
+  const { splitSql } = await import('../scripts/sql-split.mjs');
+  for (const stmt of splitSql(readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8'))) {
     await db.query(stmt);
   }
   await db.query(`insert into users (email, name, password_hash, role) values ('admin@x.com', 'Admin', $1, 'admin')`, [await hashPassword('senha-super-segura')]);
@@ -72,9 +74,9 @@ test('código MFA bloqueia após 5 tentativas erradas', async () => {
 });
 
 test('admin cria operador que precisa trocar a senha', async () => {
-  const c = await call('POST', '/users', { name: 'Operador', email: 'op@x.com', role: 'operator', password: 'senha-temporaria1' }, admin);
+  const c = await call('POST', '/users', { name: 'Operador', email: 'op@x.com', role: 'operator', password: 'senha-temporaria1', confirmPassword: 'senha-super-segura' }, admin);
   assert.equal(c.status, 201);
-  assert.equal((await call('POST', '/users', { name: 'Dup', email: 'OP@x.com', password: 'senha-temporaria1' }, admin)).status, 409);
+  assert.equal((await call('POST', '/users', { name: 'Dup', email: 'OP@x.com', password: 'senha-temporaria1', confirmPassword: 'senha-super-segura' }, admin)).status, 409);
 
   operator = await login('op@x.com', 'senha-temporaria1');
   const blocked = await call('GET', '/lines', undefined, operator);
@@ -173,9 +175,9 @@ test('consumo: prévia, gravação, duplicidade, resumo e histórico', async () 
 
 test('admin não pode desativar a si mesmo; desativação derruba sessão', async () => {
   const me = (await call('GET', '/auth/me', undefined, admin)).data.user;
-  assert.equal((await call('PATCH', `/users/${me.id}`, { active: false }, admin)).status, 400);
+  assert.equal((await call('PATCH', `/users/${me.id}`, { active: false, confirmPassword: 'senha-super-segura' }, admin)).status, 400);
   const users = (await call('GET', '/users', undefined, admin)).data.users;
   const op = users.find((u: any) => u.email === 'op@x.com');
-  assert.equal((await call('PATCH', `/users/${op.id}`, { active: false }, admin)).status, 200);
+  assert.equal((await call('PATCH', `/users/${op.id}`, { active: false, confirmPassword: 'senha-super-segura' }, admin)).status, 200);
   assert.equal((await call('GET', '/lines', undefined, operator)).status, 401);
 });

@@ -126,3 +126,44 @@ test('AUD-003: token sem versão (emitido antes da correção) é recusado', asy
   const old = await new SignJWT({ purpose: 'session' }).setProtectedHeader({ alg: 'HS256' }).setSubject(id).setIssuer('inventory-system').setIssuedAt().setExpirationTime('1h').sign(new TextEncoder().encode('x'.repeat(48)));
   assert.equal((await call('GET', '/auth/me', undefined, `session=${old}`)).status, 401);
 });
+
+// ---------- AUD-004: reautenticação e domínio ----------
+test('AUD-004: criar usuário exige a senha do admin e e-mail de domínio permitido', async () => {
+  await addUser('adm4@x.com', 'Adm4', 'admin');
+  const admin = await login('adm4@x.com', 'senha-super-segura', ipHeader('10.4.0.1'));
+  const base = { name: 'Novo', email: 'novo4@x.com', role: 'operator', password: 'frase-temporaria-forte-1' };
+  const semConfirmacao = await call('POST', '/users', base, admin);
+  assert.equal(semConfirmacao.status, 403);
+  assert.equal(semConfirmacao.data.code, 'REAUTH_REQUIRED');
+  const errada = await call('POST', '/users', { ...base, confirmPassword: 'senha-errada-aqui' }, admin);
+  assert.equal(errada.status, 403);
+  assert.equal(errada.data.code, 'REAUTH_FAILED');
+  assert.equal((await call('POST', '/users', { ...base, email: 'invasor@gmail.com', confirmPassword: 'senha-super-segura' }, admin)).status, 400);
+  assert.equal((await call('POST', '/users', { ...base, role: 'admin', confirmPassword: 'senha-super-segura' }, admin)).status, 201);
+});
+
+test('AUD-004: tentativas erradas de confirmação são limitadas', async () => {
+  await addUser('adm4b@x.com', 'Adm4b', 'admin');
+  const admin = await login('adm4b@x.com', 'senha-super-segura', ipHeader('10.4.0.2'));
+  const out: number[] = [];
+  for (let i = 0; i < 7; i++) out.push((await call('POST', '/users', { name: 'N', email: `n${i}@x.com`, password: 'frase-temporaria-forte-1', confirmPassword: 'errada-errada-1' }, admin)).status);
+  assert.deepEqual(out.slice(0, 5), [403, 403, 403, 403, 403]);
+  assert.equal(out[6], 429);
+});
+
+test('AUD-004/003: mudar papel, status ou senha exige confirmação e revoga as sessões do alvo', async () => {
+  await addUser('adm4c@x.com', 'Adm4c', 'admin');
+  const admin = await login('adm4c@x.com', 'senha-super-segura', ipHeader('10.4.0.3'));
+  const op1 = await addUser('op4a@x.com', 'Op4a', 'operator');
+  const op2 = await addUser('op4b@x.com', 'Op4b', 'operator');
+  const c1 = await login('op4a@x.com', 'senha-super-segura', ipHeader('10.4.0.4'));
+  const c2 = await login('op4b@x.com', 'senha-super-segura', ipHeader('10.4.0.5'));
+  assert.equal((await call('PATCH', `/users/${op1}`, { role: 'admin' }, admin)).status, 403);
+  assert.equal((await call('PATCH', `/users/${op1}`, { name: 'Op4a Renomeado' }, admin)).status, 200); // só nome: sem confirmação
+  // redefinir senha → sessão antiga do alvo revogada
+  assert.equal((await call('PATCH', `/users/${op1}`, { password: 'frase-redefinida-forte-2', confirmPassword: 'senha-super-segura' }, admin)).status, 200);
+  assert.equal((await call('GET', '/auth/me', undefined, c1)).status, 401);
+  // mudar papel → sessão antiga revogada
+  assert.equal((await call('PATCH', `/users/${op2}`, { role: 'admin', confirmPassword: 'senha-super-segura' }, admin)).status, 200);
+  assert.equal((await call('GET', '/auth/me', undefined, c2)).status, 401);
+});

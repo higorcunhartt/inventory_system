@@ -9,6 +9,8 @@ export default function Users() {
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
   const [resetting, setResetting] = useState<AppUser | null>(null);
+  // Ações de alto risco pedem a senha do administrador (reautenticação)
+  const [confirming, setConfirming] = useState<{ title: string; run: (pw: string) => Promise<void> } | null>(null);
 
   const load = () =>
     api<{ users: AppUser[] }>('GET', '/users')
@@ -16,15 +18,13 @@ export default function Users() {
       .catch((e) => setError(e.message));
   useEffect(() => void load(), []);
 
-  async function patch(u: AppUser, body: Record<string, unknown>) {
+  async function patch(u: AppUser, body: Record<string, unknown>, confirmPassword: string) {
     setError('');
-    try {
-      await api('PATCH', `/users/${u.id}`, body);
-      load();
-    } catch (e: any) {
-      setError(e.message);
-    }
+    await api('PATCH', `/users/${u.id}`, { ...body, confirmPassword });
+    load();
   }
+  const askAndPatch = (u: AppUser, body: Record<string, unknown>, title: string) =>
+    setConfirming({ title, run: (pw) => patch(u, body, pw) });
 
   return (
     <section>
@@ -55,7 +55,7 @@ export default function Users() {
                 <td>{u.name}</td>
                 <td>{u.email}</td>
                 <td>
-                  <select value={u.role} disabled={u.id === me?.id} onChange={(e) => patch(u, { role: e.target.value })} aria-label={`Perfil de ${u.name}`}>
+                  <select value={u.role} disabled={u.id === me?.id} onChange={(e) => askAndPatch(u, { role: e.target.value }, `Alterar perfil de ${u.name}`)} aria-label={`Perfil de ${u.name}`}>
                     <option value="operator">Equipe</option>
                     <option value="admin">Administrador</option>
                   </select>
@@ -69,7 +69,7 @@ export default function Users() {
                     Redefinir senha
                   </button>
                   {u.id !== me?.id && (
-                    <button className="btn small ghost" onClick={() => patch(u, { active: !u.active })}>
+                    <button className="btn small ghost" onClick={() => askAndPatch(u, { active: !u.active }, `${u.active ? 'Desativar' : 'Reativar'} ${u.name}`)}>
                       {u.active ? 'Desativar' : 'Reativar'}
                     </button>
                   )}
@@ -88,6 +88,7 @@ export default function Users() {
           }}
         />
       )}
+      {confirming && <ConfirmPasswordModal title={confirming.title} run={confirming.run} onClose={() => setConfirming(null)} onDone={() => { setConfirming(null); }} />}
       {resetting && (
         <UserForm
           user={resetting}
@@ -107,6 +108,8 @@ function UserForm({ user, onClose, onSaved }: { user?: AppUser; onClose: () => v
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('operator');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -115,8 +118,8 @@ function UserForm({ user, onClose, onSaved }: { user?: AppUser; onClose: () => v
     setBusy(true);
     setError('');
     try {
-      if (user) await api('PATCH', `/users/${user.id}`, { password });
-      else await api('POST', '/users', { name, email, role, password });
+      if (user) await api('PATCH', `/users/${user.id}`, { password, confirmPassword });
+      else await api('POST', '/users', { name, email, role, password, confirmPassword });
       onSaved();
     } catch (e: any) {
       setError(e.message);
@@ -148,9 +151,16 @@ function UserForm({ user, onClose, onSaved }: { user?: AppUser; onClose: () => v
         )}
         <label>
           Senha temporária (mín. 10 caracteres)
-          <input type="text" autoComplete="off" minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus={!!user} />
+          <input type={show ? 'text' : 'password'} autoComplete="new-password" minLength={10} maxLength={72} value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus={!!user} />
         </label>
-        <p className="muted full">O usuário será obrigado a trocar esta senha no primeiro acesso.</p>
+        <label className="check">
+          <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Mostrar senha
+        </label>
+        <p className="muted full">O usuário será obrigado a trocar esta senha no primeiro acesso. Evite senhas óbvias ("senha12345").</p>
+        <label className="full">
+          Sua senha de administrador (confirmação)
+          <input type="password" autoComplete="current-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+        </label>
         {error && <p className="error full">{error}</p>}
         <div className="row end full">
           <button type="button" className="btn" onClick={onClose}>
@@ -158,6 +168,44 @@ function UserForm({ user, onClose, onSaved }: { user?: AppUser; onClose: () => v
           </button>
           <button className="btn primary" disabled={busy}>
             Salvar
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ConfirmPasswordModal({ title, run, onClose, onDone }: { title: string; run: (pw: string) => Promise<void>; onClose: () => void; onDone: () => void }) {
+  const [pw, setPw] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await run(pw);
+      onDone();
+    } catch (err: any) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title={title} onClose={onClose}>
+      <form onSubmit={submit} className="form-grid">
+        <p className="muted full">Por segurança, confirme a sua senha para continuar.</p>
+        <label className="full">
+          Sua senha
+          <input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus />
+        </label>
+        {error && <p className="error full">{error}</p>}
+        <div className="row end full">
+          <button type="button" className="btn" onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="btn primary" disabled={busy || !pw}>
+            Confirmar
           </button>
         </div>
       </form>

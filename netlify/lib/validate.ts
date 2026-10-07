@@ -89,3 +89,16 @@ export function normalizeNumber(raw: string): string | null {
   if (d.startsWith('0') && d.length >= 11) d = d.replace(/^0+/, '');
   return d.length === 10 || d.length === 11 ? d : null;
 }
+
+/** E-mail de usuário do sistema: precisa ser de um domínio permitido (ALLOWED_EMAIL_DOMAINS; padrão rttshop.com.br). */
+export function corporateEmail(v: unknown): string {
+  const e = email(v);
+  const allowed = (process.env.ALLOWED_EMAIL_DOMAINS || 'rttshop.com.br')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (!allowed.includes(e.split('@')[1])) {
+    throw new HttpError(400, `Use um e-mail corporativo (${allowed.map((d) => '@' + d).join(', ')})`);
+  }
+  return e;
+}

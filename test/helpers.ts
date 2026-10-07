@@ -5,6 +5,7 @@ process.env.JWT_SECRET = 'x'.repeat(48);
 process.env.NETLIFY_DEV = 'true'; // e-mail MFA vai para o console
 delete process.env.RESEND_API_KEY;
 delete process.env.SMTP_HOST;
+process.env.ALLOWED_EMAIL_DOMAINS = 'x.com';
 
 const { setSql } = await import('../netlify/lib/db.ts');
 const { handle } = await import('../netlify/lib/app.ts');

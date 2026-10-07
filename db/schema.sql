@@ -82,3 +82,20 @@ create table if not exists rate_limits (
 );
 
 alter table users add column if not exists token_version int not null default 0;
+
+create or replace function ensure_one_active_admin() returns trigger language plpgsql as $$
+begin
+  if old.role = 'admin' and old.active and not (new.role = 'admin' and new.active) then
+    perform pg_advisory_xact_lock(7241);
+    if not exists (select 1 from users where role = 'admin' and active and id <> old.id) then
+      raise exception 'last_admin';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists users_keep_admin on users;
+
+create trigger users_keep_admin before update on users
+  for each row execute function ensure_one_active_admin();
