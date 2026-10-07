@@ -56,7 +56,7 @@ npm run build             # typecheck + build de produção
 | `RESEND_API_KEY` | Opcional: alternativa ao SMTP |
 | `ALLOWED_EMAIL_DOMAINS` | Domínios de e-mail aceitos ao criar usuários (padrão `rttshop.com.br`) |
 
-**Escopo no Netlify:** deixe `DATABASE_URL`, `JWT_SECRET`, `SMTP_USER` e `SMTP_PASS` disponíveis apenas para *Functions* e *Runtime*; o build não precisa deles.
+**Escopo no Netlify:** com plano que permita, deixe `DATABASE_URL`, `JWT_SECRET`, `SMTP_USER` e `SMTP_PASS` disponíveis apenas para *Functions* e *Runtime*; o build não precisa deles. No plano gratuito esse ajuste não existe: veja "Publicando" abaixo para evitar que o build receba os segredos.
 
 ## Segurança
 
@@ -77,4 +77,15 @@ As sessões ativas são encerradas na troca de versão (todos entram de novo).
 
 ### Publicando
 
-`npx netlify-cli@27.11.2 deploy --build --prod` (a ferramenta não é mais dependência do projeto; fixe a versão).
+No plano gratuito do Netlify não é possível restringir o escopo das variáveis, e um build feito pelo Netlify (ou por
+`deploy --build`) recebe `DATABASE_URL`, `JWT_SECRET` e as credenciais SMTP. Para que nenhum pacote de terceiros rode com esses
+segredos, **compile localmente, sem as variáveis**, e publique só os artefatos (as funções recebem as variáveis em tempo de execução):
+
+```bash
+npm ci --ignore-scripts      # instala só do lockfile, sem executar scripts de pacotes
+npm test && npm run build    # tipos, testes e build (nenhuma variável do site é usada)
+npx netlify-cli@27.11.2 deploy --prod --dir=dist --functions=netlify/functions   # SEM --build
+```
+
+- Não use `--build` e **não ative o deploy contínuo do Netlify** enquanto os segredos não puderem ficar restritos a Functions/Runtime.
+- A ferramenta do Netlify não é dependência do projeto; use sempre a versão fixa acima.
