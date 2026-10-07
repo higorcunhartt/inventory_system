@@ -80,3 +80,5 @@ create table if not exists rate_limits (
   count int not null,
   reset_at timestamptz not null
 );
+
+alter table users add column if not exists token_version int not null default 0;

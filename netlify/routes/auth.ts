@@ -1,8 +1,10 @@
 import { sql } from '../lib/db.ts';
 import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import {
+  bumpTokenVersion,
   checkPassword,
   clearCookie,
+  currentSessionUserId,
   codesMatch,
   generateCode,
   getDummyHash,
@@ -120,12 +122,12 @@ export const authRoutes: Route[] = [
       if (!consumed.length) throw new HttpError(400, 'Código já utilizado');
       await Promise.all([clearKey(pairKey), refund(acctKey)]);
 
-      const [u] = await sql`select id, email, name, role, active, must_change_password from users where id = ${userId}`;
+      const [u] = await sql`select id, email, name, role, active, must_change_password, token_version from users where id = ${userId}`;
       if (!u || !u.active) throw new HttpError(401, 'Não autenticado');
       return json(
         { user: { id: u.id, email: u.email, name: u.name, role: u.role, mustChangePassword: u.must_change_password } },
         200,
-        { 'set-cookie': await sessionCookie(u.id) },
+        { 'set-cookie': await sessionCookie(u.id, u.token_version) },
       );
     },
   ],
@@ -136,7 +138,16 @@ export const authRoutes: Route[] = [
     async ({ req }) => json({ user: await requireUser(req, { allowPasswordChange: true }) }),
   ],
 
-  ['POST', '/auth/logout', async () => json({ ok: true }, 200, { 'set-cookie': clearCookie() })],
+  [
+    'POST',
+    '/auth/logout',
+    async ({ req }) => {
+      // Encerra de fato: revoga as sessões do usuário no servidor, não só o cookie do navegador.
+      const id = await currentSessionUserId(req);
+      if (id) await bumpTokenVersion(id);
+      return json({ ok: true }, 200, { 'set-cookie': clearCookie() });
+    },
+  ],
 
   [
     'POST',
@@ -153,7 +164,9 @@ export const authRoutes: Route[] = [
       if (!(await checkPassword(current, u.password_hash))) throw new HttpError(400, 'Senha atual incorreta');
       await clearKey(`chpw:${user.id}`);
       await sql`update users set password_hash = ${await hashPassword(next)}, must_change_password = false where id = ${user.id}`;
-      return json({ ok: true });
+      // Revoga as demais sessões (inclusive a de quem copiou o cookie) e mantém esta logada com um token novo.
+      const version = await bumpTokenVersion(user.id);
+      return json({ ok: true }, 200, { 'set-cookie': await sessionCookie(user.id, version) });
     },
   ],
 ];

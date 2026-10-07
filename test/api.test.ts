@@ -80,7 +80,10 @@ test('admin cria operador que precisa trocar a senha', async () => {
   const blocked = await call('GET', '/lines', undefined, operator);
   assert.equal(blocked.status, 403);
   assert.equal(blocked.data.code, 'PASSWORD_CHANGE_REQUIRED');
-  assert.equal((await call('POST', '/auth/change-password', { currentPassword: 'senha-temporaria1', newPassword: 'nova-senha-forte-1' }, operator)).status, 200);
+  const changed = await call('POST', '/auth/change-password', { currentPassword: 'senha-temporaria1', newPassword: 'nova-senha-forte-1' }, operator);
+  assert.equal(changed.status, 200);
+  assert.equal((await call('GET', '/lines', undefined, operator)).status, 401); // sessão antiga revogada
+  operator = changed.setCookie!.split(';')[0]; // token novo emitido na troca
   assert.equal((await call('GET', '/lines', undefined, operator)).status, 200);
   assert.equal((await call('GET', '/users', undefined, operator)).status, 403);
 });

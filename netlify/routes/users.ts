@@ -69,6 +69,7 @@ export const userRoutes: Route[] = [
           active = case when ${hasActive}::boolean then ${body.active ?? null}::boolean else active end,
           password_hash = case when ${hasPass}::boolean then ${hash}::text else password_hash end,
           must_change_password = case when ${hasPass}::boolean then true else must_change_password end,
+          token_version = case when ${hasPass || hasRole || hasActive}::boolean then token_version + 1 else token_version end,
           failed_attempts = case when ${hasPass}::boolean then 0 else failed_attempts end,
           locked_until = case when ${hasPass}::boolean then null else locked_until end
         where id = ${params.id}

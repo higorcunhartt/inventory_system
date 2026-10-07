@@ -15,8 +15,8 @@ function secretKey() {
   return new TextEncoder().encode(s);
 }
 
-async function sign(userId: string, purpose: 'session' | 'mfa', seconds: number) {
-  return new SignJWT({ purpose })
+async function sign(userId: string, purpose: 'session' | 'mfa', seconds: number, tokenVersion = 0) {
+  return new SignJWT({ purpose, tv: tokenVersion })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(userId)
     .setIssuer('inventory-system')
@@ -25,11 +25,11 @@ async function sign(userId: string, purpose: 'session' | 'mfa', seconds: number)
     .sign(secretKey());
 }
 
-async function verify(token: string, purpose: 'session' | 'mfa'): Promise<string> {
+async function verifyClaims(token: string, purpose: 'session' | 'mfa'): Promise<{ sub: string; tv: number }> {
   try {
     const { payload } = await jwtVerify(token, secretKey(), { issuer: 'inventory-system', algorithms: ['HS256'] });
     if (payload.purpose !== purpose || !payload.sub) throw new Error('purpose');
-    return payload.sub;
+    return { sub: payload.sub, tv: typeof payload.tv === 'number' ? payload.tv : -1 };
   } catch {
     throw new HttpError(
       401,
@@ -40,10 +40,10 @@ async function verify(token: string, purpose: 'session' | 'mfa'): Promise<string
 }
 
 export const signMfaToken = (userId: string) => sign(userId, 'mfa', 10 * 60);
-export const verifyMfaToken = (token: string) => verify(token, 'mfa');
+export const verifyMfaToken = async (token: string) => (await verifyClaims(token, 'mfa')).sub;
 
-export async function sessionCookie(userId: string) {
-  const token = await sign(userId, 'session', SESSION_SECONDS);
+export async function sessionCookie(userId: string, tokenVersion: number) {
+  const token = await sign(userId, 'session', SESSION_SECONDS, tokenVersion);
   const secure = process.env.NETLIFY_DEV === 'true' ? '' : '; Secure';
   return `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_SECONDS}${secure}`;
 }
@@ -64,9 +64,10 @@ export async function requireUser(
 ): Promise<SessionUser> {
   const token = readCookie(req);
   if (!token) throw new HttpError(401, 'Não autenticado', 'UNAUTHENTICATED');
-  const id = await verify(token, 'session');
-  const [u] = await sql`select id, email, name, role, active, must_change_password from users where id = ${id}`;
-  if (!u || !u.active) throw new HttpError(401, 'Não autenticado', 'UNAUTHENTICATED');
+  const { sub: id, tv } = await verifyClaims(token, 'session');
+  const [u] = await sql`select id, email, name, role, active, must_change_password, token_version from users where id = ${id}`;
+  // token_version diferente = sessão revogada (logout, troca/reset de senha, desativação ou mudança de papel)
+  if (!u || !u.active || u.token_version !== tv) throw new HttpError(401, 'Não autenticado', 'UNAUTHENTICATED');
   if (u.must_change_password && !opts.allowPasswordChange) {
     throw new HttpError(403, 'Altere sua senha para continuar', 'PASSWORD_CHANGE_REQUIRED');
   }
@@ -91,4 +92,23 @@ export function codesMatch(a: string, b: string) {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
+}
+
+/** Revoga todas as sessões do usuário e devolve a nova versão. */
+export async function bumpTokenVersion(userId: string): Promise<number> {
+  const [r] = await sql`update users set token_version = token_version + 1 where id = ${userId} returning token_version`;
+  return r.token_version;
+}
+
+/** Id do usuário dono do cookie de sessão, se o cookie for válido e não revogado (sem lançar erro). */
+export async function currentSessionUserId(req: Request): Promise<string | null> {
+  try {
+    const token = readCookie(req);
+    if (!token) return null;
+    const { sub, tv } = await verifyClaims(token, 'session');
+    const [u] = await sql`select token_version from users where id = ${sub}`;
+    return u && u.token_version === tv ? sub : null;
+  } catch {
+    return null;
+  }
 }

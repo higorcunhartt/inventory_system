@@ -98,3 +98,31 @@ test('bootstrap: tabela rate_limits existe e expira janelas', async () => {
   const r = await db.query(`select count(*)::int n from rate_limits`);
   assert.ok((r.rows[0] as any).n > 0);
 });
+
+// ---------- AUD-003: revogação de sessão ----------
+test('AUD-003: logout revoga a sessão no servidor (cookie copiado deixa de valer)', async () => {
+  await addUser('sess1@x.com', 'Sess1', 'operator');
+  const cookie = await login('sess1@x.com', 'senha-super-segura', ipHeader('10.1.0.1'));
+  assert.equal((await call('GET', '/auth/me', undefined, cookie)).status, 200);
+  assert.equal((await call('POST', '/auth/logout', {}, cookie)).status, 200);
+  assert.equal((await call('GET', '/auth/me', undefined, cookie)).status, 401);
+});
+
+test('AUD-003: troca de senha revoga as outras sessões e mantém a atual com token novo', async () => {
+  await addUser('sess2@x.com', 'Sess2', 'operator');
+  const a = await login('sess2@x.com', 'senha-super-segura', ipHeader('10.1.0.2'));
+  const b = await login('sess2@x.com', 'senha-super-segura', ipHeader('10.1.0.2'));
+  const r = await call('POST', '/auth/change-password', { currentPassword: 'senha-super-segura', newPassword: 'frase-nova-bem-longa-77' }, a);
+  assert.equal(r.status, 200);
+  const fresh = r.setCookie!.split(';')[0];
+  assert.equal((await call('GET', '/auth/me', undefined, fresh)).status, 200);
+  assert.equal((await call('GET', '/auth/me', undefined, a)).status, 401);
+  assert.equal((await call('GET', '/auth/me', undefined, b)).status, 401);
+});
+
+test('AUD-003: token sem versão (emitido antes da correção) é recusado', async () => {
+  const id = await addUser('sess3@x.com', 'Sess3', 'operator');
+  const { SignJWT } = await import('jose');
+  const old = await new SignJWT({ purpose: 'session' }).setProtectedHeader({ alg: 'HS256' }).setSubject(id).setIssuer('inventory-system').setIssuedAt().setExpirationTime('1h').sign(new TextEncoder().encode('x'.repeat(48)));
+  assert.equal((await call('GET', '/auth/me', undefined, `session=${old}`)).status, 401);
+});
