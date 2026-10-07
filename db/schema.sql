@@ -99,3 +99,18 @@ drop trigger if exists users_keep_admin on users;
 
 create trigger users_keep_admin before update on users
   for each row execute function ensure_one_active_admin();
+
+create table if not exists audit_log (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  actor_id uuid,
+  actor_email text,
+  action text not null,
+  target text,
+  result text not null default 'ok',
+  ip text,
+  user_agent text,
+  detail jsonb
+);
+create index if not exists audit_log_at_idx on audit_log (at desc);
+create index if not exists audit_log_action_idx on audit_log (action, at desc);

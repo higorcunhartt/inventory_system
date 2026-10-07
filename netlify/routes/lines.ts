@@ -1,6 +1,7 @@
 import { sql } from '../lib/db.ts';
 import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { requireUser } from '../lib/auth.ts';
+import { audit } from '../lib/audit.ts';
 import { parseCsv } from '../lib/csv.ts';
 import { isoDate, lineType, normalizeNumber, reqStr, str } from '../lib/validate.ts';
 
@@ -89,6 +90,7 @@ export const lineRoutes: Route[] = [
         select id, number, carrier, line_type, account, assignee_name, project,
                to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at from ins`;
       if (!rows.length) throw new HttpError(409, 'Já existe uma linha com este número');
+      await audit(req, user, 'line_created', { target: number, detail: { lineId: rows[0].id } });
       return json({ line: toLine(rows[0]) }, 201);
     },
   ],
@@ -160,6 +162,7 @@ export const lineRoutes: Route[] = [
           select count(*)::int as n from ins`;
         created = out[0].n;
       }
+      await audit(req, user, 'lines_imported', { detail: { created, skipped: valid.length - created, errors: errors.length } });
       return json({ created, skipped: valid.length - created, errors });
     },
   ],
@@ -212,6 +215,7 @@ export const lineRoutes: Route[] = [
         throw err;
       }
       if (!rows.length) throw new HttpError(404, 'Linha não encontrada');
+      await audit(req, user, 'line_updated', { target: rows[0].number, detail: { lineId: rows[0].id, fields: Object.keys(b) } });
       return json({ line: toLine(rows[0]) });
     },
   ],
@@ -220,9 +224,11 @@ export const lineRoutes: Route[] = [
     'DELETE',
     '/lines/:id',
     async ({ req, params }) => {
-      await requireUser(req, { roles: ['admin'] });
-      const rows = await sql`delete from lines where id = ${params.id} returning id`;
+      const user = await requireUser(req, { roles: ['admin'] });
+      const rows = await sql`delete from lines where id = ${params.id} returning id, number, carrier, assignee_name`;
       if (!rows.length) throw new HttpError(404, 'Linha não encontrada');
+      // O histórico da linha é apagado junto; a auditoria guarda o que existia
+      await audit(req, user, 'line_deleted', { target: rows[0].number, detail: { lineId: rows[0].id, carrier: rows[0].carrier, assignee: rows[0].assignee_name } });
       return json({ ok: true });
     },
   ],

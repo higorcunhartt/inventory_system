@@ -1,6 +1,7 @@
 import { sql } from '../lib/db.ts';
 import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { hashPassword, requireReauth, requireUser } from '../lib/auth.ts';
+import { audit } from '../lib/audit.ts';
 import { corporateEmail, password, reqStr } from '../lib/validate.ts';
 
 const ROLES = ['admin', 'operator'];
@@ -37,13 +38,14 @@ export const userRoutes: Route[] = [
       const role = body.role ?? 'operator';
       if (!ROLES.includes(role)) throw new HttpError(400, 'Perfil inválido');
       const pwd = password(body.password);
-      await requireReauth(me.id, body.confirmPassword);
+      await requireReauth(req, me.id, body.confirmPassword);
       const hash = await hashPassword(pwd);
       const rows = await sql`insert into users (email, name, password_hash, role, must_change_password)
                              values (${mail}, ${name}, ${hash}, ${role}, true)
                              on conflict (email) do nothing
                              returning id, email, name, role, active, must_change_password, created_at`;
       if (!rows.length) throw new HttpError(409, 'Já existe um usuário com este e-mail');
+      await audit(req, me, 'user_created', { target: mail, detail: { role, userId: rows[0].id } });
       return json({ user: toUser(rows[0]) }, 201);
     },
   ],
@@ -66,7 +68,7 @@ export const userRoutes: Route[] = [
       const name = hasName ? reqStr(body.name, 'nome', 120) : null;
       const newPassword = hasPass ? password(body.password) : null;
       // Mudar papel, status ou senha de alguém exige confirmar a senha do administrador.
-      if (hasRole || hasActive || hasPass) await requireReauth(me.id, body.confirmPassword);
+      if (hasRole || hasActive || hasPass) await requireReauth(req, me.id, body.confirmPassword);
       const hash = newPassword ? await hashPassword(newPassword) : null;
       let rows;
       try {
@@ -87,6 +89,10 @@ export const userRoutes: Route[] = [
         throw err;
       }
       if (!rows.length) throw new HttpError(404, 'Usuário não encontrado');
+      await audit(req, me, 'user_updated', {
+        target: rows[0].email,
+        detail: { userId: rows[0].id, name: hasName || undefined, role: hasRole ? body.role : undefined, active: hasActive ? body.active : undefined, passwordReset: hasPass || undefined },
+      });
       return json({ user: toUser(rows[0]) });
     },
   ],

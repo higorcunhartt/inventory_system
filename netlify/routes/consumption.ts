@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { sql } from '../lib/db.ts';
 import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { requireUser } from '../lib/auth.ts';
+import { audit } from '../lib/audit.ts';
 import { parseInvoice, type Mapping } from '../lib/invoice-parser.ts';
 import { month, reqStr, str } from '../lib/validate.ts';
 
@@ -102,6 +103,7 @@ export const consumptionRoutes: Route[] = [
         )
         select (select id from inv) as id, (select count(*)::int from ins) as n`;
       if (!out[0].id) throw new HttpError(409, 'Esta fatura (mesmo arquivo) já foi enviada anteriormente');
+      await audit(req, user, 'invoice_saved', { target: filename, detail: { invoiceId: out[0].id, carrier, month: reference.slice(0, 7), lines: out[0].n } });
       return json({ id: out[0].id, lines: out[0].n }, 201);
     },
   ],
@@ -135,9 +137,10 @@ export const consumptionRoutes: Route[] = [
     'DELETE',
     '/consumption/invoices/:id',
     async ({ req, params }) => {
-      await requireUser(req, { roles: ['admin'] });
-      const rows = await sql`delete from invoices where id = ${params.id} returning id`;
+      const user = await requireUser(req, { roles: ['admin'] });
+      const rows = await sql`delete from invoices where id = ${params.id} returning id, filename, carrier, to_char(reference_month, 'YYYY-MM') as month`;
       if (!rows.length) throw new HttpError(404, 'Fatura não encontrada');
+      await audit(req, user, 'invoice_deleted', { target: rows[0].filename, detail: { invoiceId: rows[0].id, carrier: rows[0].carrier, month: rows[0].month } });
       return json({ ok: true });
     },
   ],

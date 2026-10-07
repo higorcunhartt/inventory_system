@@ -3,8 +3,9 @@ import { authRoutes } from '../routes/auth.ts';
 import { userRoutes } from '../routes/users.ts';
 import { lineRoutes } from '../routes/lines.ts';
 import { consumptionRoutes } from '../routes/consumption.ts';
+import { auditRoutes } from '../routes/audit.ts';
 
-const routes: Route[] = [...authRoutes, ...userRoutes, ...lineRoutes, ...consumptionRoutes];
+const routes: Route[] = [...authRoutes, ...userRoutes, ...lineRoutes, ...consumptionRoutes, ...auditRoutes];
 
 export async function handle(req: Request): Promise<Response> {
   try {

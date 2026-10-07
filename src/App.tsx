@@ -5,6 +5,7 @@ import ChangePassword from './pages/ChangePassword';
 import Lines from './pages/Lines';
 import Users from './pages/Users';
 import Consumption from './pages/Consumption';
+import Audit from './pages/Audit';
 
 export default function App() {
   const { user, loading, logout } = useAuth();
@@ -25,6 +26,7 @@ export default function App() {
           </NavLink>
           {admin && <NavLink to="/consumo">Consumo</NavLink>}
           {admin && <NavLink to="/usuarios">Usuários</NavLink>}
+          {admin && <NavLink to="/auditoria">Auditoria</NavLink>}
           <NavLink to="/senha">Minha senha</NavLink>
         </nav>
         <div className="who">
@@ -41,6 +43,7 @@ export default function App() {
           <Route path="/" element={<Lines />} />
           {admin && <Route path="/consumo" element={<Consumption />} />}
           {admin && <Route path="/usuarios" element={<Users />} />}
+          {admin && <Route path="/auditoria" element={<Audit />} />}
           <Route path="/senha" element={<ChangePassword />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
