@@ -12,7 +12,8 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   const res = await fetch('/api' + path, {
     method,
     credentials: 'same-origin',
-    headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+    // Cabeçalho personalizado exigido pelo servidor em toda mutação (defesa em profundidade contra CSRF)
+    headers: { 'x-requested-with': 'inventory-web', ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));

@@ -27,7 +27,7 @@ async function call(method: string, path: string, body?: unknown, cookie?: strin
   const res = await handle(
     new Request('http://localhost/api' + path, {
       method,
-      headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) },
+      headers: { 'x-requested-with': 'inventory-web', ...(body ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     }),
   );

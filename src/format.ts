@@ -36,12 +36,21 @@ export function currentMonth(offset = 0): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/**
+ * Célula de CSV segura: texto que começa com = + - @ (ou tab/CR) seria executado como fórmula pelo Excel,
+ * então recebe um apóstrofo na frente. Números e valores numéricos como "-12,50" não são alterados.
+ */
+export function csvCell(v: string | number): string {
+  let s = String(v);
+  if (typeof v === 'string') {
+    const numeric = /^[-+]?\d+([.,]\d+)?$/.test(s);
+    if (/^[=@\t\r]/.test(s) || (/^[-+]/.test(s) && !numeric)) s = "'" + s;
+  }
+  return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
-  const esc = (v: string | number) => {
-    const s = String(v);
-    return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const blob = new Blob(['﻿' + rows.map((r) => r.map(esc).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;

