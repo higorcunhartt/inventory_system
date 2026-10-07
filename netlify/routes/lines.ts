@@ -3,7 +3,7 @@ import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { requireUser } from '../lib/auth.ts';
 import { audit } from '../lib/audit.ts';
 import { parseCsv } from '../lib/csv.ts';
-import { isoDate, lineType, normalizeNumber, reqStr, str } from '../lib/validate.ts';
+import { isoDate, lineType, normalizeNumber, reqStr, str, uuid } from '../lib/validate.ts';
 
 const toLine = (r: Record<string, any>) => ({
   id: r.id,
@@ -172,7 +172,9 @@ export const lineRoutes: Route[] = [
     '/lines/:id',
     async ({ req, params }) => {
       const user = await requireUser(req);
+      const lineId = uuid(params.id);
       const b = await readJson(req);
+      if (Object.keys(b).length === 0) throw new HttpError(400, 'Nenhum campo para alterar');
       const allowed = user.role === 'admin' ? ADMIN_FIELDS : OPERATOR_FIELDS;
       for (const k of Object.keys(b)) {
         if (!ADMIN_FIELDS.has(k)) throw new HttpError(400, `Campo desconhecido: ${k}`);
@@ -202,7 +204,7 @@ export const lineRoutes: Route[] = [
               delivery_date = case when ${has('deliveryDate')}::boolean then ${delivery}::date else delivery_date end,
               notes = case when ${has('notes')}::boolean then ${notes}::text else notes end,
               updated_at = now()
-            where id = ${params.id}
+            where id = ${lineId}
             returning *
           ), h as (
             insert into line_history (line_id, action, assignee_name, project, delivery_date, changed_by_name)
@@ -225,7 +227,7 @@ export const lineRoutes: Route[] = [
     '/lines/:id',
     async ({ req, params }) => {
       const user = await requireUser(req, { roles: ['admin'] });
-      const rows = await sql`delete from lines where id = ${params.id} returning id, number, carrier, assignee_name`;
+      const rows = await sql`delete from lines where id = ${uuid(params.id)} returning id, number, carrier, assignee_name`;
       if (!rows.length) throw new HttpError(404, 'Linha não encontrada');
       // O histórico da linha é apagado junto; a auditoria guarda o que existia
       await audit(req, user, 'line_deleted', { target: rows[0].number, detail: { lineId: rows[0].id, carrier: rows[0].carrier, assignee: rows[0].assignee_name } });
@@ -240,7 +242,7 @@ export const lineRoutes: Route[] = [
       await requireUser(req);
       const rows = await sql`select action, assignee_name, project, to_char(delivery_date, 'YYYY-MM-DD') as delivery_date,
                                     changed_by_name, changed_at
-                             from line_history where line_id = ${params.id} order by changed_at desc, id desc limit 100`;
+                             from line_history where line_id = ${uuid(params.id)} order by changed_at desc, id desc limit 100`;
       return json({
         history: rows.map((r) => ({
           action: r.action,

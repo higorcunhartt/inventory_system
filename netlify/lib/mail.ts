@@ -17,7 +17,8 @@ function smtpTransport() {
 }
 
 export async function sendMfaEmail(to: string, name: string, code: string) {
-  const subject = `Seu código de acesso: ${code}`;
+  // O código fica só no corpo: assunto aparece em pré-visualizações de notificação e telas bloqueadas.
+  const subject = 'Seu código de acesso ao Inventário de linhas móveis RTT';
   const text = `Olá, ${name}.\n\nSeu código de verificação do Inventário Móvel é ${code}.\nEle expira em 10 minutos. Se não foi você, ignore este e-mail.`;
   const from = process.env.MAIL_FROM || process.env.SMTP_USER;
 

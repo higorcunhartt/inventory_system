@@ -206,3 +206,39 @@ test('AUD-017: respostas da API levam nosniff e demais cabeçalhos', async () =>
   assert.equal(r.headers.get('cache-control'), 'no-store');
   assert.equal(r.headers.get('cross-origin-resource-policy'), 'same-origin');
 });
+
+// ---------- AUD-011: entradas malformadas ----------
+test('AUD-011: IDs inválidos e URLs malformadas viram 400 (não 500); PATCH vazio é recusado', async () => {
+  await addUser('val@x.com', 'Val', 'admin');
+  const admin = await login('val@x.com', 'senha-super-segura', ipHeader('10.6.0.1'));
+  const cases: Array<[string, string, unknown]> = [
+    ['PATCH', '/lines/not-a-uuid', { assigneeName: 'x' }],
+    ['DELETE', '/lines/not-a-uuid', undefined],
+    ['GET', '/lines/not-a-uuid/history', undefined],
+    ['PATCH', '/users/not-a-uuid', { name: 'x' }],
+    ['DELETE', '/consumption/invoices/xyz', undefined],
+    ['GET', '/lines/%E0%A4%A/history', undefined],
+    ['GET', '/consumption/lines/abc?from=2026-01&to=2026-02', undefined],
+  ];
+  for (const [m, p, body] of cases) {
+    const r = await call(m, p, body, admin);
+    assert.equal(r.status, 400, `${m} ${p} → ${r.status}`);
+  }
+  const lineId = (await call('POST', '/lines', { number: '(11) 90000-0001', carrier: 'Vivo', lineType: 'DADOS' }, admin)).data.line.id;
+  const empty = await call('PATCH', `/lines/${lineId}`, {}, admin);
+  assert.equal(empty.status, 400);
+  const hist = await call('GET', `/lines/${lineId}/history`, undefined, admin);
+  assert.equal(hist.data.history.length, 1); // só a criação: PATCH vazio não gera histórico
+});
+
+test('AUD-011: arquivo ilegível retorna mensagem genérica (sem texto interno da biblioteca)', async () => {
+  const restore = (await import('./helpers.ts')).quietErrors();
+  await addUser('val2@x.com', 'Val2', 'admin');
+  const admin = await login('val2@x.com', 'senha-super-segura', ipHeader('10.6.0.2'));
+  const bad = Buffer.from('isto não é um xlsx de verdade').toString('base64');
+  const r = await call('POST', '/consumption/parse', { filename: 'x.xlsx', contentBase64: bad }, admin);
+  restore();
+  assert.equal(r.status, 422);
+  assert.match(r.data.error, /PDF, CSV ou XLSX válido/);
+  assert.doesNotMatch(JSON.stringify(r.data), /InvalidSpreadsheet|zip|central|Error:/i);
+});

@@ -51,7 +51,11 @@ export function matchRoute(routes: Route[], method: string, path: string) {
     const params: Record<string, string> = {};
     const ok = pSegs.every((p, i) => {
       if (p.startsWith(':')) {
-        params[p.slice(1)] = decodeURIComponent(segs[i]);
+        try {
+          params[p.slice(1)] = decodeURIComponent(segs[i]);
+        } catch {
+          throw new HttpError(400, 'URL inválida');
+        }
         return true;
       }
       return p === segs[i];

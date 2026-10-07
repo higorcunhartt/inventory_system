@@ -87,7 +87,10 @@ export const getDummyHash = () => (dummyHash ??= bcrypt.hashSync(randomUUID(), 1
 export const generateCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
 
 export function hashCode(code: string, userId: string) {
-  return createHmac('sha256', secretKey()).update(`${userId}:${code}`).digest('hex');
+  secretKey(); // falha cedo se JWT_SECRET estiver ausente ou curto
+  // Chave derivada por finalidade: o segredo do JWT nunca é usado diretamente para os códigos de MFA.
+  const key = createHmac('sha256', process.env.JWT_SECRET || '').update('inventory-system:mfa-code:v1').digest();
+  return createHmac('sha256', key).update(`${userId}:${code}`).digest('hex');
 }
 
 export function codesMatch(a: string, b: string) {

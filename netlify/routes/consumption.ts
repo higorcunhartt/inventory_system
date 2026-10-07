@@ -3,8 +3,8 @@ import { sql } from '../lib/db.ts';
 import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { requireUser } from '../lib/auth.ts';
 import { audit } from '../lib/audit.ts';
-import { parseInvoice, type Mapping } from '../lib/invoice-parser.ts';
-import { month, reqStr, str } from '../lib/validate.ts';
+import { parseInvoice, UserFacingParseError, type Mapping } from '../lib/invoice-parser.ts';
+import { month, phoneParam, reqStr, str, uuid } from '../lib/validate.ts';
 
 const MAX_FILE_BYTES = 4_300_000; // limite de ~6 MB do corpo da função, já considerando o base64
 
@@ -25,7 +25,10 @@ async function readFile(body: Record<string, any>) {
     const parsed = await parseInvoice(filename, bytes, readMapping(body.mapping));
     return { filename, bytes, parsed };
   } catch (err: any) {
-    throw new HttpError(422, `Não foi possível ler o arquivo: ${err?.message ?? 'formato inválido'}`);
+    // Mensagens internas das bibliotecas ficam só no log do servidor; o cliente recebe texto seguro.
+    if (err instanceof UserFacingParseError) throw new HttpError(422, err.message);
+    console.error('Falha ao ler fatura:', err);
+    throw new HttpError(422, 'Não foi possível ler o arquivo. Verifique se é um PDF, CSV ou XLSX válido e não corrompido.');
   }
 }
 
@@ -138,7 +141,7 @@ export const consumptionRoutes: Route[] = [
     '/consumption/invoices/:id',
     async ({ req, params }) => {
       const user = await requireUser(req, { roles: ['admin'] });
-      const rows = await sql`delete from invoices where id = ${params.id} returning id, filename, carrier, to_char(reference_month, 'YYYY-MM') as month`;
+      const rows = await sql`delete from invoices where id = ${uuid(params.id)} returning id, filename, carrier, to_char(reference_month, 'YYYY-MM') as month`;
       if (!rows.length) throw new HttpError(404, 'Fatura não encontrada');
       await audit(req, user, 'invoice_deleted', { target: rows[0].filename, detail: { invoiceId: rows[0].id, carrier: rows[0].carrier, month: rows[0].month } });
       return json({ ok: true });
@@ -208,7 +211,7 @@ export const consumptionRoutes: Route[] = [
         select to_char(i.reference_month, 'YYYY-MM') as month, sum(c.voice_minutes) as voice, sum(c.data_mb) as data,
                sum(c.amount) as amount, max(c.assignee_name) as assignee_name, max(c.project) as project
         from consumption c join invoices i on i.id = c.invoice_id
-        where c.number = ${params.number} and i.reference_month between ${from}::date and ${to}::date
+        where c.number = ${phoneParam(params.number)} and i.reference_month between ${from}::date and ${to}::date
         group by 1 order by 1`;
       return json({
         months: rows.map((m) => ({

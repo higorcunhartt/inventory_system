@@ -102,3 +102,17 @@ export function corporateEmail(v: unknown): string {
   }
   return e;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Identificador de rota: precisa ser um UUID, senão 400 (e não um erro 500 do banco). */
+export function uuid(v: unknown, field = 'identificador'): string {
+  if (typeof v !== 'string' || !UUID_RE.test(v)) throw new HttpError(400, `Identificador inválido: ${field}`);
+  return v.toLowerCase();
+}
+
+/** Número de telefone em dígitos (DDD + número) vindo da rota. */
+export function phoneParam(v: unknown): string {
+  if (typeof v !== 'string' || !/^\d{10,11}$/.test(v)) throw new HttpError(400, 'Número inválido');
+  return v;
+}

@@ -1,6 +1,9 @@
 import { parseCsv, decodeText } from './csv.ts';
 import { normalizeNumber } from './validate.ts';
 
+/** Erro com mensagem segura para exibir ao usuário (limites, formato não suportado). */
+export class UserFacingParseError extends Error {}
+
 export type Record_ = { number: string; voiceMinutes: number; dataMb: number; amount: number };
 export type Mapping = { number: number | null; voice: number | null; data: number | null; amount: number | null };
 
@@ -230,7 +233,7 @@ export async function parseInvoice(filename: string, bytes: Uint8Array, mappingO
     format = 'csv';
     sampleText = text.slice(0, 5000) + ' ' + filename;
   } else {
-    throw new Error('Formato não suportado. Envie PDF, CSV ou XLSX.');
+    throw new UserFacingParseError('Formato não suportado. Envie PDF, CSV ou XLSX.');
   }
 
   const { headers, mapping, records, warnings } = parseTable(rows, mappingOverride);

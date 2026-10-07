@@ -2,7 +2,7 @@ import { sql } from '../lib/db.ts';
 import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { hashPassword, requireReauth, requireUser } from '../lib/auth.ts';
 import { audit } from '../lib/audit.ts';
-import { corporateEmail, password, reqStr } from '../lib/validate.ts';
+import { corporateEmail, password, reqStr, uuid } from '../lib/validate.ts';
 
 const ROLES = ['admin', 'operator'];
 
@@ -55,6 +55,7 @@ export const userRoutes: Route[] = [
     '/users/:id',
     async ({ req, params }) => {
       const me = await requireUser(req, { roles: ['admin'] });
+      const targetId = uuid(params.id);
       const body = await readJson(req);
       const hasName = body.name !== undefined;
       const hasRole = body.role !== undefined;
@@ -62,7 +63,7 @@ export const userRoutes: Route[] = [
       const hasPass = body.password !== undefined;
       if (hasRole && !ROLES.includes(body.role)) throw new HttpError(400, 'Perfil inválido');
       if (hasActive && typeof body.active !== 'boolean') throw new HttpError(400, 'Valor inválido: ativo');
-      if (params.id === me.id && (hasRole || hasActive)) {
+      if (targetId === me.id && (hasRole || hasActive)) {
         throw new HttpError(400, 'Você não pode alterar seu próprio perfil ou status');
       }
       const name = hasName ? reqStr(body.name, 'nome', 120) : null;
@@ -81,7 +82,7 @@ export const userRoutes: Route[] = [
           token_version = case when ${hasPass || hasRole || hasActive}::boolean then token_version + 1 else token_version end,
           failed_attempts = case when ${hasPass}::boolean then 0 else failed_attempts end,
           locked_until = case when ${hasPass}::boolean then null else locked_until end
-        where id = ${params.id}
+        where id = ${targetId}
         returning id, email, name, role, active, must_change_password, created_at`;
       } catch (err: any) {
         // Gatilho do banco: sempre deve restar ao menos um administrador ativo
