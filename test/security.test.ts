@@ -242,3 +242,43 @@ test('AUD-011: arquivo ilegível retorna mensagem genérica (sem texto interno d
   assert.match(r.data.error, /PDF, CSV ou XLSX válido/);
   assert.doesNotMatch(JSON.stringify(r.data), /InvalidSpreadsheet|zip|central|Error:/i);
 });
+
+// ---------- AUD-009 / AUD-016: faturas ----------
+test('AUD-009: mesma conta e mês não entra duas vezes (mesmo com bytes e operadora diferentes); outra conta pode', async () => {
+  await addUser('inv@x.com', 'Inv', 'admin');
+  const admin = await login('inv@x.com', 'senha-super-segura', ipHeader('10.7.0.1'));
+  const csv = (extra = '') => Buffer.from(`Linha;Minutos;Dados (MB);Valor\n11987654321;10;100;10,00\n${extra}`).toString('base64');
+  const send = (name: string, content: string, over: Record<string, unknown> = {}) =>
+    call('POST', '/consumption/invoices', { filename: name, contentBase64: content, carrier: 'Vivo', account: '0371235565', referenceMonth: '2026-07', ...over }, admin);
+  assert.equal((await send('a.csv', csv())).status, 201);
+  const again = await send('a-novo-download.csv', csv('\n'), { carrier: 'vivo' }); // bytes diferentes e operadora em minúsculas
+  assert.equal(again.status, 409);
+  assert.match(again.data.error, /0371235565/);
+  assert.equal((await send('b.csv', csv('11987654322;2;2;2,00\n'), { account: '0370918765' })).status, 201); // outra conta no mesmo mês
+  assert.equal((await send('c.csv', csv('11987654323;3;3;3,00\n'), { account: '0391479169' })).status, 201);
+  const list = await call('GET', '/consumption/invoices', undefined, admin);
+  assert.deepEqual(list.data.invoices.map((i: any) => i.account).sort(), ['0370918765', '0371235565', '0391479169']);
+  assert.ok(list.data.invoices.every((i: any) => i.carrier === 'Vivo'));
+});
+
+test('AUD-009: conta é obrigatória e precisa ser numérica', async () => {
+  await addUser('inv2@x.com', 'Inv2', 'admin');
+  const admin = await login('inv2@x.com', 'senha-super-segura', ipHeader('10.7.0.2'));
+  const content = Buffer.from('Linha;Minutos\n11987654321;10\n').toString('base64');
+  const base = { filename: 'd.csv', contentBase64: content, carrier: 'Vivo', referenceMonth: '2026-08' };
+  assert.equal((await call('POST', '/consumption/invoices', base, admin)).status, 400);
+  assert.equal((await call('POST', '/consumption/invoices', { ...base, account: '12ab' }, admin)).status, 400);
+  assert.equal((await call('POST', '/consumption/invoices', { ...base, account: '0371235565' }, admin)).status, 201);
+});
+
+test('AUD-016: arquivo com valores ilegíveis é recusado ao salvar e sinalizado na prévia', async () => {
+  await addUser('inv3@x.com', 'Inv3', 'admin');
+  const admin = await login('inv3@x.com', 'senha-super-segura', ipHeader('10.7.0.3'));
+  const content = Buffer.from(`Linha;Minutos;Valor\n11987654321;10;${'9'.repeat(400)}\n11987654322;5;1e+21\n`).toString('base64');
+  const prev = await call('POST', '/consumption/parse', { filename: 'e.csv', contentBase64: content }, admin);
+  assert.equal(prev.status, 200);
+  assert.equal(prev.data.invalidCount, 2);
+  const save = await call('POST', '/consumption/invoices', { filename: 'e.csv', contentBase64: content, carrier: 'Vivo', account: '0371235565', referenceMonth: '2026-09' }, admin);
+  assert.equal(save.status, 422);
+  assert.match(save.data.error, /ilegíveis|fora de faixa/);
+});

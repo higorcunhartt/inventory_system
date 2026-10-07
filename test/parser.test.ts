@@ -132,3 +132,11 @@ test('AUD-010: checkZipLimits bloqueia bomba de compressão e arquivos que não 
   assert.throws(() => checkZipLimits(new Uint8Array(Buffer.from('isto não é um zip nem de longe, é só texto comum aqui'))), UserFacingParseError);
   assert.throws(() => checkZipLimits(new Uint8Array(5)), UserFacingParseError);
 });
+
+import { detectAccount } from '../netlify/lib/invoice-parser.ts';
+test('AUD-009: detecta o número da conta no texto da fatura', () => {
+  assert.equal(detectAccount('Nº da Conta: 0371235565 Mês Referência 09/2026'), '0371235565');
+  assert.equal(detectAccount('Número da Conta: 0370918765 Mês de Referência: 09/2026'), '0370918765');
+  assert.equal(detectAccount('Número da conta:0391479169'), '0391479169');
+  assert.equal(detectAccount('sem conta aqui 12345'), null);
+});

@@ -116,3 +116,18 @@ export function phoneParam(v: unknown): string {
   if (typeof v !== 'string' || !/^\d{10,11}$/.test(v)) throw new HttpError(400, 'Número inválido');
   return v;
 }
+
+const KNOWN_CARRIERS = ['Vivo', 'Claro', 'TIM', 'Oi', 'Algar'];
+
+/** Operadora padronizada ("vivo" e "VIVO" viram "Vivo"), para a unicidade por conta e mês funcionar. */
+export function canonicalCarrier(v: unknown): string {
+  const s = reqStr(v, 'operadora', 60).replace(/\s+/g, ' ');
+  return KNOWN_CARRIERS.find((k) => k.toLowerCase() === s.toLowerCase()) ?? s.replace(/(^|\s)(\p{L})/gu, (_m, sp, c) => sp + c.toUpperCase());
+}
+
+/** Número da conta da operadora (apenas dígitos). */
+export function accountNumber(v: unknown): string {
+  const s = reqStr(v, 'número da conta', 20);
+  if (!/^\d{6,15}$/.test(s)) throw new HttpError(400, 'Número da conta inválido (use apenas dígitos)');
+  return s;
+}

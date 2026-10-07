@@ -140,13 +140,13 @@ test('consumo: prévia, gravação, duplicidade, resumo e histórico', async () 
   assert.equal(prev.data.detectedCarrier, 'Vivo');
   assert.equal((await call('POST', '/consumption/parse', payload, operator)).status, 403);
 
-  const save = await call('POST', '/consumption/invoices', { ...payload, carrier: 'Vivo', referenceMonth: '2026-05' }, admin);
+  const save = await call('POST', '/consumption/invoices', { ...payload, carrier: 'Vivo', account: '0371235565', referenceMonth: '2026-05' }, admin);
   assert.equal(save.status, 201, JSON.stringify(save.data));
   assert.equal(save.data.lines, 3);
-  assert.equal((await call('POST', '/consumption/invoices', { ...payload, carrier: 'Vivo', referenceMonth: '2026-05' }, admin)).status, 409);
+  assert.equal((await call('POST', '/consumption/invoices', { ...payload, carrier: 'Vivo', account: '0371235565', referenceMonth: '2026-05' }, admin)).status, 409);
 
   const csv2 = 'Linha;Minutos;Dados (MB);Valor\n11987654321;50;1024;59,90\n';
-  const save2 = await call('POST', '/consumption/invoices', { filename: 'vivo_2026-06.csv', contentBase64: Buffer.from(csv2).toString('base64'), carrier: 'Vivo', referenceMonth: '2026-06' }, admin);
+  const save2 = await call('POST', '/consumption/invoices', { filename: 'vivo_2026-06.csv', contentBase64: Buffer.from(csv2).toString('base64'), carrier: 'Vivo', account: '0371235565', referenceMonth: '2026-06' }, admin);
   assert.equal(save2.status, 201, JSON.stringify(save2.data));
 
   const sum = await call('GET', '/consumption/summary?from=2026-01&to=2026-12', undefined, admin);

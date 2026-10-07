@@ -114,3 +114,6 @@ create table if not exists audit_log (
 );
 create index if not exists audit_log_at_idx on audit_log (at desc);
 create index if not exists audit_log_action_idx on audit_log (action, at desc);
+
+alter table invoices add column if not exists account text;
+create unique index if not exists invoices_account_month_uq on invoices (lower(carrier), account, reference_month);

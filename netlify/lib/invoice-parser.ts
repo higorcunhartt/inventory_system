@@ -53,6 +53,7 @@ export type ParseResult = {
   mapping: Mapping | null;
   detectedMonth: string | null; // AAAA-MM
   detectedCarrier: string | null;
+  detectedAccount: string | null;
   warnings: string[];
   invalidCount: number; // células numéricas ilegíveis ou fora de faixa (viram 0 e bloqueiam o salvamento)
 };
@@ -71,6 +72,12 @@ export function detectCarrier(raw: string): string | null {
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1]);
   return hits[0]?.[0] ?? null;
+}
+
+/** Número da conta, quando o texto o informa ("Número da Conta: 0371235565"). */
+export function detectAccount(text: string): string | null {
+  const m = text.match(/(?:n[úu]mero da conta|n[º°o] da conta|\bconta)\s{0,3}:?\s{0,3}(\d{8,12})\b/i);
+  return m ? m[1] : null;
 }
 
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -281,7 +288,7 @@ export async function parseInvoice(filename: string, bytes: Uint8Array, mappingO
     const { text } = await extractText(pdf, { mergePages: true });
     if (text.length > LIMITS.MAX_TEXT_CHARS) throw new UserFacingParseError('O texto da fatura é grande demais para ser processado. Use o CSV/XLSX da operadora.');
     const { records, warnings } = parseInvoiceText(text);
-    return { format: 'pdf', records, headers: null, mapping: null, detectedMonth: detectMonth(text), detectedCarrier: detectCarrier(text), warnings, invalidCount: 0 };
+    return { format: 'pdf', records, headers: null, mapping: null, detectedMonth: detectMonth(text), detectedCarrier: detectCarrier(text), detectedAccount: detectAccount(text), warnings, invalidCount: 0 };
   }
 
   let rows: string[][];
@@ -307,5 +314,5 @@ export async function parseInvoice(filename: string, bytes: Uint8Array, mappingO
   }
 
   const { headers, mapping, records, warnings, invalidCount } = parseTable(rows, mappingOverride);
-  return { format, records, headers, mapping, detectedMonth: detectMonth(sampleText), detectedCarrier: detectCarrier(sampleText), warnings, invalidCount };
+  return { format, records, headers, mapping, detectedMonth: detectMonth(sampleText), detectedCarrier: detectCarrier(sampleText), detectedAccount: detectAccount(sampleText), warnings, invalidCount };
 }

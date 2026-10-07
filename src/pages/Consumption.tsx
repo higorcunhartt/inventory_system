@@ -9,11 +9,13 @@ type Preview = {
   mapping: Mapping | null;
   detectedMonth: string | null;
   detectedCarrier: string | null;
+  detectedAccount: string | null;
+  invalidCount: number;
   warnings: string[];
   totals: { lines: number; registered: number; voiceMinutes: number; dataMb: number; amount: number };
   records: Array<{ number: string; voiceMinutes: number; dataMb: number; amount: number; registered: boolean }>;
 };
-type Invoice = { id: string; carrier: string; month: string; filename: string; totalAmount: number; uploadedBy: string; uploadedAt: string; lines: number };
+type Invoice = { id: string; carrier: string; account: string | null; month: string; filename: string; totalAmount: number; uploadedBy: string; uploadedAt: string; lines: number };
 
 const CARRIERS = ['Vivo', 'Claro', 'TIM', 'Oi', 'Algar'];
 const MAX_BYTES = 4_300_000;
@@ -42,6 +44,7 @@ function Upload({ onSaved }: { onSaved: () => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [mapping, setMapping] = useState<Mapping | null>(null);
   const [carrier, setCarrier] = useState('Vivo');
+  const [account, setAccount] = useState('');
   const [refMonth, setRefMonth] = useState(currentMonth(-1));
   const [error, setError] = useState('');
   const [okMsg, setOkMsg] = useState('');
@@ -56,6 +59,7 @@ function Upload({ onSaved }: { onSaved: () => void }) {
       setMapping(p.mapping);
       if (first) {
         if (p.detectedCarrier) setCarrier(p.detectedCarrier);
+        setAccount(p.detectedAccount ?? '');
         if (p.detectedMonth) setRefMonth(p.detectedMonth);
       }
     } catch (e: any) {
@@ -88,6 +92,7 @@ function Upload({ onSaved }: { onSaved: () => void }) {
         contentBase64: file.b64,
         carrier,
         referenceMonth: refMonth,
+        account,
         mapping: mapping ?? undefined,
       });
       setOkMsg(`Fatura salva: ${r.lines} linha(s) de ${carrier} em ${formatMonth(refMonth)}.`);
@@ -138,6 +143,10 @@ function Upload({ onSaved }: { onSaved: () => void }) {
                   <option key={c} value={c} />
                 ))}
               </datalist>
+            </label>
+            <label>
+              Número da conta
+              <input inputMode="numeric" value={account} onChange={(e) => setAccount(e.target.value.replace(/\D/g, ''))} placeholder="ex.: 0371235565" required />
             </label>
             <label>
               Mês de referência
@@ -195,7 +204,7 @@ function Upload({ onSaved }: { onSaved: () => void }) {
             <button className="btn" onClick={() => { setFile(null); setPreview(null); }}>
               Descartar
             </button>
-            <button className="btn primary" onClick={save} disabled={busy || !preview.records.length || !carrier || !refMonth}>
+            <button className="btn primary" onClick={save} disabled={busy || !preview.records.length || !carrier || !refMonth || account.length < 6 || preview.invalidCount > 0}>
               Salvar no histórico
             </button>
           </div>
@@ -416,6 +425,7 @@ function Invoices({ refresh, onChanged }: { refresh: number; onChanged: () => vo
             <tr>
               <th>Mês</th>
               <th>Operadora</th>
+              <th>Conta</th>
               <th>Arquivo</th>
               <th>Linhas</th>
               <th>Valor</th>
@@ -426,7 +436,7 @@ function Invoices({ refresh, onChanged }: { refresh: number; onChanged: () => vo
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={8} className="muted">
                   Nenhuma fatura enviada ainda.
                 </td>
               </tr>
@@ -435,6 +445,7 @@ function Invoices({ refresh, onChanged }: { refresh: number; onChanged: () => vo
               <tr key={i.id}>
                 <td>{formatMonth(i.month)}</td>
                 <td>{i.carrier}</td>
+                <td className="mono">{i.account ?? '—'}</td>
                 <td>{i.filename}</td>
                 <td>{i.lines}</td>
                 <td>{formatMoney(i.totalAmount)}</td>

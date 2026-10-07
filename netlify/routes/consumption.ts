@@ -4,7 +4,7 @@ import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { requireUser } from '../lib/auth.ts';
 import { audit } from '../lib/audit.ts';
 import { parseInvoice, UserFacingParseError, type Mapping } from '../lib/invoice-parser.ts';
-import { month, phoneParam, reqStr, str, uuid } from '../lib/validate.ts';
+import { accountNumber, canonicalCarrier, month, phoneParam, reqStr, str, uuid } from '../lib/validate.ts';
 
 const MAX_FILE_BYTES = 4_300_000; // limite de ~6 MB do corpo da função, já considerando o base64
 
@@ -62,6 +62,7 @@ export const consumptionRoutes: Route[] = [
         mapping: parsed.mapping,
         detectedMonth: parsed.detectedMonth,
         detectedCarrier: parsed.detectedCarrier,
+        detectedAccount: parsed.detectedAccount,
         warnings: parsed.warnings,
         invalidCount: parsed.invalidCount,
         totals: {
@@ -84,11 +85,17 @@ export const consumptionRoutes: Route[] = [
       const user = await requireUser(req, { roles: ['admin'] });
       const body = await readJson(req);
       const { filename, bytes, parsed } = await readFile(body);
-      const carrier = reqStr(body.carrier, 'operadora', 60);
+      const carrier = canonicalCarrier(body.carrier);
+      const account = accountNumber(body.account);
       const reference = month(body.referenceMonth, 'mês de referência');
       if (!parsed.records.length) throw new HttpError(422, 'Nenhuma linha com consumo foi encontrada no arquivo');
       if (parsed.invalidCount > 0) {
         throw new HttpError(422, `${parsed.invalidCount} valor(es) numérico(s) do arquivo estão ilegíveis ou fora de faixa. Corrija o arquivo e envie novamente.`);
+      }
+      // A identidade de negócio de uma fatura é (operadora, conta, mês): o mesmo documento reexportado não entra duas vezes.
+      const dup = await sql`select 1 as x from invoices where lower(carrier) = lower(${carrier}) and account = ${account} and reference_month = ${reference}::date limit 1`;
+      if (dup.length) {
+        throw new HttpError(409, `Já existe uma fatura da conta ${account} (${carrier}) em ${reference.slice(5, 7)}/${reference.slice(0, 4)}. Remova a anterior na lista de faturas para substituí-la.`);
       }
       const hash = createHash('sha256').update(bytes).digest('hex');
       const total = parsed.records.reduce((s, r) => s + r.amount, 0);
@@ -96,8 +103,8 @@ export const consumptionRoutes: Route[] = [
 
       const out = await sql`
         with inv as (
-          insert into invoices (carrier, reference_month, filename, file_hash, total_amount, uploaded_by)
-          values (${carrier}, ${reference}::date, ${filename}, ${hash}, ${Math.round(total * 100) / 100}, ${user.name})
+          insert into invoices (carrier, account, reference_month, filename, file_hash, total_amount, uploaded_by)
+          values (${carrier}, ${account}, ${reference}::date, ${filename}, ${hash}, ${Math.round(total * 100) / 100}, ${user.name})
           on conflict (file_hash) do nothing
           returning id
         ), ins as (
@@ -109,8 +116,8 @@ export const consumptionRoutes: Route[] = [
           returning 1
         )
         select (select id from inv) as id, (select count(*)::int from ins) as n`;
-      if (!out[0].id) throw new HttpError(409, 'Esta fatura (mesmo arquivo) já foi enviada anteriormente');
-      await audit(req, user, 'invoice_saved', { target: filename, detail: { invoiceId: out[0].id, carrier, month: reference.slice(0, 7), lines: out[0].n } });
+      if (!out[0].id) throw new HttpError(409, 'Esta fatura já foi enviada (mesmo arquivo, ou mesma conta e mês).');
+      await audit(req, user, 'invoice_saved', { target: filename, detail: { invoiceId: out[0].id, carrier, account, month: reference.slice(0, 7), lines: out[0].n } });
       return json({ id: out[0].id, lines: out[0].n }, 201);
     },
   ],
@@ -121,7 +128,7 @@ export const consumptionRoutes: Route[] = [
     async ({ req }) => {
       await requireUser(req, { roles: ['admin'] });
       const rows = await sql`
-        select i.id, i.carrier, to_char(i.reference_month, 'YYYY-MM') as month, i.filename, i.total_amount,
+        select i.id, i.carrier, i.account, to_char(i.reference_month, 'YYYY-MM') as month, i.filename, i.total_amount,
                i.uploaded_by, i.uploaded_at, count(c.id)::int as lines
         from invoices i left join consumption c on c.invoice_id = i.id
         group by i.id order by i.reference_month desc, i.uploaded_at desc limit 200`;
@@ -129,6 +136,7 @@ export const consumptionRoutes: Route[] = [
         invoices: rows.map((r) => ({
           id: r.id,
           carrier: r.carrier,
+          account: r.account,
           month: r.month,
           filename: r.filename,
           totalAmount: num(r.total_amount),

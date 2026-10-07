@@ -54,7 +54,7 @@ test('AUD-005: a trilha sobrevive à exclusão da linha (o histórico da linha n
 
 test('AUD-005: faturas salvas/removidas são registradas; GET /audit é só do administrador', async () => {
   const csv = 'Linha;Minutos;Dados (MB);Valor\n11987654321;10;100;10,00\n';
-  const saved = await call('POST', '/consumption/invoices', { filename: 'f.csv', contentBase64: Buffer.from(csv).toString('base64'), carrier: 'Vivo', referenceMonth: '2026-05' }, admin);
+  const saved = await call('POST', '/consumption/invoices', { filename: 'f.csv', contentBase64: Buffer.from(csv).toString('base64'), carrier: 'Vivo', account: '0371235565', referenceMonth: '2026-05' }, admin);
   assert.equal(saved.status, 201);
   await call('DELETE', `/consumption/invoices/${saved.data.id}`, undefined, admin);
   assert.equal((await events('invoice_saved')).length, 1);
