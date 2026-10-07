@@ -1,0 +1,55 @@
+# CI mínimo: tipos, testes e build a cada push/PR.
+# Não usa ações de terceiros (nada para fixar por SHA): o código é obtido com `git` e a ferramenta é o Node
+# já instalado no runner. Permissões do GITHUB_TOKEN reduzidas ao mínimo (somente leitura).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obter o código (sem ações de terceiros)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init -q .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${AUTH}" fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+      - name: Versões
+        run: node -v && npm -v
+      - name: Instalar dependências (lockfile, sem scripts de pacotes além do necessário)
+        run: npm ci
+      - name: Tipos
+        run: npm run typecheck
+      - name: Testes (inclui testes de segurança)
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  # Informativo: não bloqueia o PR. Envia a lista de dependências ao registry npm (comportamento padrão do npm audit).
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Obter o código (sem ações de terceiros)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init -q .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${AUTH}" fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+      - name: npm audit (nível alto ou crítico)
+        run: npm audit --audit-level=high
