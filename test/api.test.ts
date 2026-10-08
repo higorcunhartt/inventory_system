@@ -6,6 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 process.env.JWT_SECRET = 'x'.repeat(48);
 process.env.NETLIFY_DEV = 'true'; // e-mail MFA vai para o console
 delete process.env.RESEND_API_KEY;
+process.env.FORGOT_MIN_MS = '0';
 process.env.ALLOWED_EMAIL_DOMAINS = 'x.com';
 
 const { setSql } = await import('../netlify/lib/db.ts');
@@ -16,10 +17,13 @@ const db = new PGlite();
 setSql(async (s, ...v) => (await db.query(s.reduce((a, x, i) => a + '$' + i + x), v)).rows as any);
 
 let lastCode = '';
+let lastLink = '';
 const origLog = console.log;
 console.log = (...a: unknown[]) => {
   const m = String(a[0]).match(/\[DEV\] Código MFA para .*: (\d{6})/);
+  const l = String(a[0]).match(/\[DEV\] Link de senha para .*: (\S+)/);
   if (m) lastCode = m[1];
+  else if (l) lastLink = l[1];
   else origLog(...a);
 };
 
@@ -73,10 +77,16 @@ test('código MFA bloqueia após 5 tentativas erradas', async () => {
   assert.equal((await call('POST', '/auth/verify', { mfaToken: a.data.mfaToken, code: real })).status, 429);
 });
 
-test('admin cria operador que precisa trocar a senha', async () => {
-  const c = await call('POST', '/users', { name: 'Operador', email: 'op@x.com', role: 'operator', password: 'senha-temporaria1', confirmPassword: 'senha-super-segura' }, admin);
+test('admin cria operador por convite; conta antiga com senha temporária ainda é forçada a trocar', async () => {
+  const c = await call('POST', '/users', { name: 'Operador', email: 'op@x.com', role: 'operator', confirmPassword: 'senha-super-segura' }, admin);
   assert.equal(c.status, 201);
-  assert.equal((await call('POST', '/users', { name: 'Dup', email: 'OP@x.com', password: 'senha-temporaria1', confirmPassword: 'senha-super-segura' }, admin)).status, 409);
+  assert.equal(c.data.emailSent, true);
+  assert.equal((await call('POST', '/users', { name: 'Dup', email: 'OP@x.com', confirmPassword: 'senha-super-segura' }, admin)).status, 409);
+  // a pessoa define a própria senha pelo link
+  const setp = await call('POST', '/auth/set-password', { token: lastLink.split('#t=')[1], newPassword: 'senha-temporaria1' });
+  assert.equal(setp.status, 200);
+  // simula uma conta legada (criada antes dos links) que ainda precisa trocar a senha temporária
+  await db.query("update users set must_change_password = true where email = 'op@x.com'");
 
   operator = await login('op@x.com', 'senha-temporaria1');
   const blocked = await call('GET', '/lines', undefined, operator);

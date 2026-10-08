@@ -6,9 +6,12 @@ import Lines from './pages/Lines';
 import Users from './pages/Users';
 import Consumption from './pages/Consumption';
 import Audit from './pages/Audit';
+import SetPassword from './pages/SetPassword';
 
 export default function App() {
   const { user, loading, logout } = useAuth();
+  // Página aberta pelo link de e-mail (convite ou redefinição): funciona sem estar logado
+  if (window.location.pathname === '/definir-senha') return <SetPassword />;
   if (loading) return <div className="center muted">Carregando…</div>;
   if (!user) return <Login />;
   if (user.mustChangePassword) return <ChangePassword forced />;

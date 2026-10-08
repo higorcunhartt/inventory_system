@@ -6,6 +6,7 @@ process.env.NETLIFY_DEV = 'true'; // e-mail MFA vai para o console
 delete process.env.RESEND_API_KEY;
 delete process.env.SMTP_HOST;
 process.env.ALLOWED_EMAIL_DOMAINS = 'x.com';
+process.env.FORGOT_MIN_MS = '0';
 
 const { setSql } = await import('../netlify/lib/db.ts');
 const { handle } = await import('../netlify/lib/app.ts');
@@ -15,11 +16,17 @@ export const db = new PGlite();
 setSql(async (s, ...v) => (await db.query(s.reduce((a, x, i) => a + '$' + i + x), v)).rows as any);
 
 export let lastCode = '';
+export let lastLink = '';
+export let linkCount = 0;
 const origLog = console.log;
 console.log = (...a: unknown[]) => {
   const m = String(a[0]).match(/\[DEV\] Código MFA para .*: (\d{6})/);
+  const l = String(a[0]).match(/\[DEV\] Link de senha para .*: (\S+)/);
   if (m) lastCode = m[1];
-  else origLog(...a);
+  else if (l) {
+    lastLink = l[1];
+    linkCount++;
+  } else origLog(...a);
 };
 export const quietErrors = () => {
   const o = console.error;
@@ -55,6 +62,13 @@ export async function call(method: string, path: string, body?: unknown, cookie?
   );
   const data = await res.json().catch(() => ({}));
   return { status: res.status, data, setCookie: res.headers.get('set-cookie'), headers: res.headers };
+}
+
+export const tokenOf = (link: string) => link.split('#t=')[1];
+
+/** Cria o usuário definindo a senha pelo link (o administrador não escolhe senhas). */
+export async function setPasswordFromLink(link: string, newPassword: string) {
+  return call('POST', '/auth/set-password', { token: tokenOf(link), newPassword });
 }
 
 export async function login(email: string, password = 'senha-super-segura', extra: Record<string, string> = {}) {

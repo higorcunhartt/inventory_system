@@ -28,10 +28,10 @@ test('AUD-005: falhas, bloqueios e sucessos de login são registrados', async ()
 });
 
 test('AUD-005: ações administrativas são registradas e nada sensível entra no log', async () => {
-  const created = await call('POST', '/users', { name: 'Novo', email: 'novo@x.com', role: 'operator', password: 'frase-temporaria-forte-1', confirmPassword: PW }, admin);
+  const created = await call('POST', '/users', { name: 'Novo', email: 'novo@x.com', role: 'operator', confirmPassword: PW }, admin);
   assert.equal(created.status, 201);
   await call('PATCH', `/users/${created.data.user.id}`, { role: 'admin', confirmPassword: PW }, admin);
-  await call('POST', '/users', { name: 'X', email: 'x1@x.com', password: 'frase-temporaria-forte-1', confirmPassword: 'errada-errada-1' }, admin);
+  await call('POST', '/users', { name: 'X', email: 'x1@x.com', confirmPassword: 'errada-errada-1' }, admin);
   assert.equal((await events('user_created')).length, 1);
   assert.equal((await events('user_updated')).length, 1);
   assert.equal((await events('reauth_failed')).length, 1);

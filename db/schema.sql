@@ -117,3 +117,14 @@ create index if not exists audit_log_action_idx on audit_log (action, at desc);
 
 alter table invoices add column if not exists account text;
 create unique index if not exists invoices_account_month_uq on invoices (lower(carrier), account, reference_month);
+
+create table if not exists password_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  token_hash text not null unique,
+  purpose text not null check (purpose in ('invite', 'reset')),
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists password_tokens_user_idx on password_tokens (user_id, created_at desc);

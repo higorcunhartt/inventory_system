@@ -55,6 +55,7 @@ npm run build             # typecheck + build de produção
 | `MAIL_FROM` | Remetente, ex.: `Inventário Móvel <usuario@seudominio.com.br>` |
 | `RESEND_API_KEY` | Opcional: alternativa ao SMTP |
 | `ALLOWED_EMAIL_DOMAINS` | Domínios de e-mail aceitos ao criar usuários (padrão `rttshop.com.br`) |
+| `APP_URL` | Endereço público do sistema usado nos links de e-mail, ex.: `https://rtt-inventario-movel.netlify.app` (sem barra no fim). Se vazio, usa a origem da requisição |
 
 **Escopo no Netlify:** com plano que permita, deixe `DATABASE_URL`, `JWT_SECRET`, `SMTP_USER` e `SMTP_PASS` disponíveis apenas para *Functions* e *Runtime*; o build não precisa deles. No plano gratuito esse ajuste não existe: veja "Publicando" abaixo para evitar que o build receba os segredos.
 
@@ -63,7 +64,8 @@ npm run build             # typecheck + build de produção
 - Senhas com bcrypt (custo 12); 10 a 72 bytes; senhas comuns são recusadas; usuários novos trocam a senha temporária no 1º acesso.
 - Limite de tentativas atômico (por IP, por e-mail+IP e por conta) com resposta idêntica para conta existente ou não; falhas de MFA são cumulativas; no máximo 10 e-mails de código por hora por usuário.
 - Sessões revogáveis (`token_version`): logout, troca/reset de senha, desativação e mudança de papel encerram sessões antigas.
-- Criar usuário e mudar papel/status/senha exigem a senha do administrador; sempre resta um administrador ativo (gatilho no banco).
+- Criar usuário e mudar papel/status exigem a senha do administrador; sempre resta um administrador ativo (gatilho no banco).
+- Ninguém define a senha de outra pessoa: o usuário novo recebe por e-mail um link de uso único (24 h) e define a própria senha; "Esqueci minha senha" usa o mesmo mecanismo com link de 1 h. O token vai no fragmento da URL (`#t=`), é guardado só como HMAC no banco e o login continua exigindo o código MFA por e-mail.
 - Trilha de auditoria somente de inserção (`audit_log`), que sobrevive à exclusão de dados.
 - CSRF: `SameSite=Strict` + cabeçalho `X-Requested-With` + Fetch Metadata; exportação CSV neutraliza fórmulas.
 - Cabeçalhos de segurança e CSP (sem `unsafe-inline`) em `netlify.toml` e nas respostas da API.

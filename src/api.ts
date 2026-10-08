@@ -22,7 +22,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
 }
 
 export type User = { id: string; email: string; name: string; role: 'admin' | 'operator'; mustChangePassword: boolean };
-export type AppUser = User & { active: boolean; createdAt: string };
+export type AppUser = User & { active: boolean; pendingLink: boolean; createdAt: string };
 export type Line = {
   id: string;
   number: string;

@@ -114,6 +114,8 @@ td.detail table { background: var(--surface); }
   .topbar nav { order: 3; flex-basis: 100%; overflow-x: auto; }
 }
 
+.btn.block { display: block; text-align: center; text-decoration: none; }
+
 /* Identidade RTT */
 .page-banner { background: var(--black); color: #fff; border-left: 8px solid var(--primary); border-radius: 6px; padding: 18px 22px; margin-bottom: 20px; }
 .page-banner h1 { margin: 0; font-size: 26px; letter-spacing: .01em; }

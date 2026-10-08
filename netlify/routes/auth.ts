@@ -15,7 +15,8 @@ import {
   signMfaToken,
   verifyMfaToken,
 } from '../lib/auth.ts';
-import { sendMfaEmail } from '../lib/mail.ts';
+import { sendMfaEmail, sendPasswordLinkEmail } from '../lib/mail.ts';
+import { consumeToken, issueLink, revokeLinks } from '../lib/password-links.ts';
 import { clearKey, clientIp, hit, purgeExpired, refund } from '../lib/ratelimit.ts';
 import { audit } from '../lib/audit.ts';
 import { email, loginPassword, password, reqStr } from '../lib/validate.ts';
@@ -187,6 +188,64 @@ export const authRoutes: Route[] = [
       const version = await bumpTokenVersion(user.id);
       await audit(req, user, 'password_changed');
       return json({ ok: true }, 200, { 'set-cookie': await sessionCookie(user.id, version) });
+    },
+  ],
+
+  // "Esqueci minha senha": resposta sempre igual (não revela se o e-mail existe); link de 1 hora e uso único.
+  [
+    'POST',
+    '/auth/forgot',
+    async ({ req }) => {
+      const started = Date.now();
+      const body = await readJson(req);
+      const mail = email(body.email);
+      const ip = clientIp(req);
+      const generic = async () => {
+        // Tempo mínimo de resposta para que enviar (ou não) o e-mail não denuncie se a conta existe.
+        const wait = Number(process.env.FORGOT_MIN_MS ?? 1800) - (Date.now() - started);
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        return json({ ok: true, message: 'Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha.' });
+      };
+      if ((await hit(`forgot-ip:${ip}`, 3600)) > 10) return generic();
+      const [u] = await sql`select id, email, name, active from users where email = ${mail}`;
+      if (u && u.active && (await hit(`forgot:${u.id}`, 3600)) <= 3) {
+        try {
+          const link = await issueLink(req, u.id, 'reset');
+          await sendPasswordLinkEmail(u.email, u.name, link, 'reset');
+          await audit(req, { id: u.id, email: u.email }, 'password_reset_requested');
+        } catch (err) {
+          if (!(err instanceof HttpError)) console.error('Falha ao enviar link de redefinição:', err);
+          await audit(req, { id: u.id, email: u.email }, 'password_reset_requested', { result: 'fail' });
+        }
+      } else {
+        await audit(req, null, 'password_reset_requested', { target: mail, result: 'fail', detail: { motivo: u ? 'limite ou inativo' : 'desconhecido' } });
+      }
+      return generic();
+    },
+  ],
+
+  // Define a senha a partir do link (convite ou redefinição). Não inicia sessão: o login com MFA continua obrigatório.
+  [
+    'POST',
+    '/auth/set-password',
+    async ({ req }) => {
+      const body = await readJson(req);
+      const token = reqStr(body.token, 'token', 200);
+      const next = password(body.newPassword); // valida a política ANTES de gastar o link
+      if ((await hit(`setpw-ip:${clientIp(req)}`, WINDOW)) > 20) throw new HttpError(429, TOO_MANY);
+      const claim = await consumeToken(token);
+      const invalid = new HttpError(400, 'Link inválido, já usado ou expirado. Peça um novo link.');
+      if (!claim) {
+        await audit(req, null, 'set_password_failed', { result: 'fail' });
+        throw invalid;
+      }
+      const [u] = await sql`select id, email, active from users where id = ${claim.userId}`;
+      if (!u || !u.active) throw invalid;
+      await sql`update users set password_hash = ${await hashPassword(next)}, must_change_password = false,
+                   token_version = token_version + 1 where id = ${u.id}`;
+      await revokeLinks(u.id);
+      await audit(req, { id: u.id, email: u.email }, 'password_set', { detail: { purpose: claim.purpose } });
+      return json({ ok: true });
     },
   ],
 ];

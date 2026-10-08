@@ -1,6 +1,6 @@
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
-import { addUser, call, login, loadSchema, db } from './helpers.ts';
+import { addUser, call, login, loadSchema, db, lastLink, tokenOf } from './helpers.ts';
 
 const ipHeader = (ip: string) => ({ 'x-forwarded-for': ip });
 
@@ -131,7 +131,9 @@ test('AUD-003: token sem versão (emitido antes da correção) é recusado', asy
 test('AUD-004: criar usuário exige a senha do admin e e-mail de domínio permitido', async () => {
   await addUser('adm4@x.com', 'Adm4', 'admin');
   const admin = await login('adm4@x.com', 'senha-super-segura', ipHeader('10.4.0.1'));
-  const base = { name: 'Novo', email: 'novo4@x.com', role: 'operator', password: 'frase-temporaria-forte-1' };
+  const base = { name: 'Novo', email: 'novo4@x.com', role: 'operator' };
+  // o administrador não define senhas: informar uma senha é recusado
+  assert.equal((await call('POST', '/users', { ...base, password: 'frase-temporaria-forte-1', confirmPassword: 'senha-super-segura' }, admin)).status, 400);
   const semConfirmacao = await call('POST', '/users', base, admin);
   assert.equal(semConfirmacao.status, 403);
   assert.equal(semConfirmacao.data.code, 'REAUTH_REQUIRED');
@@ -146,7 +148,7 @@ test('AUD-004: tentativas erradas de confirmação são limitadas', async () => 
   await addUser('adm4b@x.com', 'Adm4b', 'admin');
   const admin = await login('adm4b@x.com', 'senha-super-segura', ipHeader('10.4.0.2'));
   const out: number[] = [];
-  for (let i = 0; i < 7; i++) out.push((await call('POST', '/users', { name: 'N', email: `n${i}@x.com`, password: 'frase-temporaria-forte-1', confirmPassword: 'errada-errada-1' }, admin)).status);
+  for (let i = 0; i < 7; i++) out.push((await call('POST', '/users', { name: 'N', email: `n${i}@x.com`, confirmPassword: 'errada-errada-1' }, admin)).status);
   assert.deepEqual(out.slice(0, 5), [403, 403, 403, 403, 403]);
   assert.equal(out[6], 429);
 });
@@ -160,8 +162,12 @@ test('AUD-004/003: mudar papel, status ou senha exige confirmação e revoga as 
   const c2 = await login('op4b@x.com', 'senha-super-segura', ipHeader('10.4.0.5'));
   assert.equal((await call('PATCH', `/users/${op1}`, { role: 'admin' }, admin)).status, 403);
   assert.equal((await call('PATCH', `/users/${op1}`, { name: 'Op4a Renomeado' }, admin)).status, 200); // só nome: sem confirmação
-  // redefinir senha → sessão antiga do alvo revogada
-  assert.equal((await call('PATCH', `/users/${op1}`, { password: 'frase-redefinida-forte-2', confirmPassword: 'senha-super-segura' }, admin)).status, 200);
+  // o admin não define senha de ninguém; envia um link e a sessão antiga só cai quando a pessoa define a nova senha
+  assert.equal((await call('PATCH', `/users/${op1}`, { password: 'frase-redefinida-forte-2', confirmPassword: 'senha-super-segura' }, admin)).status, 400);
+  assert.equal((await call('POST', `/users/${op1}/invite`, {}, admin)).status, 403); // exige confirmação
+  assert.equal((await call('POST', `/users/${op1}/invite`, { confirmPassword: 'senha-super-segura' }, admin)).status, 200);
+  assert.equal((await call('GET', '/auth/me', undefined, c1)).status, 200);
+  assert.equal((await call('POST', '/auth/set-password', { token: tokenOf(lastLink), newPassword: 'frase-redefinida-forte-2' })).status, 200);
   assert.equal((await call('GET', '/auth/me', undefined, c1)).status, 401);
   // mudar papel → sessão antiga revogada
   assert.equal((await call('PATCH', `/users/${op2}`, { role: 'admin', confirmPassword: 'senha-super-segura' }, admin)).status, 200);
