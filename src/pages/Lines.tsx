@@ -19,8 +19,8 @@ function readPageSize(): number {
 const CARRIERS = ['Vivo', 'Claro', 'TIM', 'Oi', 'Algar'];
 const TYPE_LABEL = { DADOS: 'Dados', DADOS_VOZ: 'Dados e Voz' } as const;
 
-type Form = { number: string; carrier: string; lineType: 'DADOS' | 'DADOS_VOZ'; account: string; assigneeName: string; project: string; deliveryDate: string; notes: string };
-const emptyForm: Form = { number: '', carrier: 'Vivo', lineType: 'DADOS_VOZ', account: '', assigneeName: '', project: '', deliveryDate: '', notes: '' };
+type Form = { number: string; carrier: string; lineType: 'DADOS' | 'DADOS_VOZ'; account: string; assigneeName: string; employeeId: string; assigneeEmail: string; project: string; deliveryDate: string; notes: string };
+const emptyForm: Form = { number: '', carrier: 'Vivo', lineType: 'DADOS_VOZ', account: '', assigneeName: '', employeeId: '', assigneeEmail: '', project: '', deliveryDate: '', notes: '' };
 
 export default function Lines() {
   const { user } = useAuth();
@@ -58,7 +58,7 @@ export default function Lines() {
       if (type && l.lineType !== type) return false;
       if (onlySpare && !isSpare(l.assigneeName)) return false;
       if (!t) return true;
-      return (digits && l.number.includes(digits)) || (l.account ?? '').includes(t) || (l.assigneeName ?? '').toLowerCase().includes(t) || (l.project ?? '').toLowerCase().includes(t);
+      return (digits && l.number.includes(digits)) || (l.account ?? '').includes(t) || (l.employeeId ?? '').toLowerCase().includes(t) || (l.assigneeEmail ?? '').toLowerCase().includes(t) || (l.assigneeName ?? '').toLowerCase().includes(t) || (l.project ?? '').toLowerCase().includes(t);
     });
   }, [lines, q, carrier, project, type, onlySpare]);
 
@@ -112,7 +112,7 @@ export default function Lines() {
       </div>
 
       <div className="filters">
-        <input placeholder="Buscar número, conta, usuário ou projeto…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input placeholder="Buscar número, conta, usuário, matrícula, e-mail ou projeto…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={carrier} onChange={(e) => setCarrier(e.target.value)} aria-label="Operadora">
           <option value="">Todas as operadoras</option>
           {carriers.map((c) => (
@@ -146,6 +146,8 @@ export default function Lines() {
               <th>Tipo</th>
               <th>Conta</th>
               <th>Usuário</th>
+              <th>Matrícula</th>
+              <th>E-mail</th>
               <th>Local (projeto)</th>
               <th>Entrega</th>
               <th />
@@ -154,14 +156,14 @@ export default function Lines() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={8} className="muted">
+                <td colSpan={10} className="muted">
                   Carregando…
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="muted">
+                <td colSpan={10} className="muted">
                   Nenhuma linha encontrada.
                 </td>
               </tr>
@@ -175,6 +177,8 @@ export default function Lines() {
                 </td>
                 <td className="mono">{l.account ?? '—'}</td>
                 <td>{l.assigneeName ?? SPARE}</td>
+                <td className="mono">{l.employeeId ?? '—'}</td>
+                <td>{l.assigneeEmail ?? '—'}</td>
                 <td>{l.project ?? '—'}</td>
                 <td>{formatDate(l.deliveryDate)}</td>
                 <td className="actions">
@@ -226,7 +230,7 @@ export default function Lines() {
 function LineForm({ line, admin, carriers, projects, onClose, onSaved }: { line: Line | null; admin: boolean; carriers: string[]; projects: string[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<Form>(
     line
-      ? { number: line.number, carrier: line.carrier, lineType: line.lineType, account: line.account ?? '', assigneeName: line.assigneeName ?? '', project: line.project ?? '', deliveryDate: line.deliveryDate ?? '', notes: line.notes ?? '' }
+      ? { number: line.number, carrier: line.carrier, lineType: line.lineType, account: line.account ?? '', assigneeName: line.assigneeName ?? '', employeeId: line.employeeId ?? '', assigneeEmail: line.assigneeEmail ?? '', project: line.project ?? '', deliveryDate: line.deliveryDate ?? '', notes: line.notes ?? '' }
       : emptyForm,
   );
   const [error, setError] = useState('');
@@ -281,6 +285,15 @@ function LineForm({ line, admin, carriers, projects, onClose, onSaved }: { line:
           <input value={f.assigneeName} onChange={set('assigneeName')} placeholder="Deixe vazio para marcar como Spare" autoFocus={!admin} />
         </label>
         <label>
+          Matrícula
+          <input value={f.employeeId} onChange={set('employeeId')} disabled={locked} maxLength={30} />
+        </label>
+        <label>
+          E-mail
+          <input type="email" value={f.assigneeEmail} onChange={set('assigneeEmail')} disabled={locked} maxLength={254} />
+        </label>
+        {!locked && line && <p className="muted full">Ao trocar o usuário, atualize também a matrícula e o e-mail. Se a equipe trocar o usuário, os dois campos são limpos.</p>}
+        <label>
           Local (projeto)
           <input list="projects" value={f.project} onChange={set('project')} disabled={locked} />
           <datalist id="projects">
@@ -334,7 +347,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   return (
     <Modal title="Importar linhas (CSV)" onClose={onClose}>
       <p className="muted">
-        Colunas: <strong>Número; Operadora; Tipo; Conta; Usuário; Projeto; Data de entrega; Observações</strong> (Tipo: "Dados" ou "Dados e Voz"; data: DD/MM/AAAA). Números já cadastrados são ignorados.
+        Colunas: <strong>Número; Operadora; Tipo; Conta; Usuário; Matrícula; E-mail; Projeto; Data de entrega; Observações</strong> (Tipo: "Dados" ou "Dados e Voz"; data: DD/MM/AAAA). Números já cadastrados são ignorados.
       </p>
       <input
         type="file"

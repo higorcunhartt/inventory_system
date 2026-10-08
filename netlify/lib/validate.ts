@@ -143,3 +143,21 @@ export function assigneeOrSpare(v: unknown): string {
   const s = str(v, 'usuário', { max: 120 });
   return s === null || s.toLowerCase() === 'spare' ? SPARE : s;
 }
+
+/** Matrícula do colaborador (opcional): letras, números, ponto, hífen ou barra; até 30 caracteres. */
+export function employeeIdOf(v: unknown): string | null {
+  const s = str(v, 'matrícula', { max: 30 });
+  if (s !== null && !/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(s)) {
+    throw new HttpError(400, 'Matrícula inválida (use letras, números, ponto, hífen, barra ou sublinhado)');
+  }
+  return s;
+}
+
+/** E-mail do colaborador (opcional); guardado em minúsculas. */
+export function optionalEmail(v: unknown): string | null {
+  const s = str(v, 'e-mail', { max: 254 });
+  if (s === null) return null;
+  const e = s.toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new HttpError(400, 'E-mail inválido');
+  return e;
+}

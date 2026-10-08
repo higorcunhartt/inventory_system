@@ -128,3 +128,6 @@ create table if not exists password_tokens (
   created_at timestamptz not null default now()
 );
 create index if not exists password_tokens_user_idx on password_tokens (user_id, created_at desc);
+
+alter table lines add column if not exists employee_id text;
+alter table lines add column if not exists assignee_email text;

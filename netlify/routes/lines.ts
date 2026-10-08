@@ -3,7 +3,7 @@ import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { requireUser } from '../lib/auth.ts';
 import { audit } from '../lib/audit.ts';
 import { parseCsv } from '../lib/csv.ts';
-import { assigneeOrSpare, isoDate, lineType, normalizeNumber, reqStr, SPARE, str, uuid } from '../lib/validate.ts';
+import { assigneeOrSpare, employeeIdOf, isoDate, lineType, normalizeNumber, optionalEmail, reqStr, SPARE, str, uuid } from '../lib/validate.ts';
 
 const toLine = (r: Record<string, any>) => ({
   id: r.id,
@@ -11,6 +11,8 @@ const toLine = (r: Record<string, any>) => ({
   carrier: r.carrier,
   lineType: r.line_type,
   account: r.account,
+  employeeId: r.employee_id,
+  assigneeEmail: r.assignee_email,
   assigneeName: r.assignee_name,
   project: r.project,
   deliveryDate: r.delivery_date,
@@ -19,7 +21,7 @@ const toLine = (r: Record<string, any>) => ({
 });
 
 const OPERATOR_FIELDS = new Set(['assigneeName', 'deliveryDate']);
-const ADMIN_FIELDS = new Set(['number', 'carrier', 'lineType', 'account', 'assigneeName', 'project', 'deliveryDate', 'notes']);
+const ADMIN_FIELDS = new Set(['number', 'carrier', 'lineType', 'account', 'assigneeName', 'employeeId', 'assigneeEmail', 'project', 'deliveryDate', 'notes']);
 
 function requireNumber(v: unknown) {
   const n = normalizeNumber(reqStr(v, 'número', 30));
@@ -38,6 +40,8 @@ const HEADERS: Array<[string, RegExp]> = [
   ['carrier', /operadora/],
   ['type', /^tipo/],
   ['account', /conta/],
+  ['employeeId', /matricula/],
+  ['assigneeEmail', /e-?mail/],
   ['assignee', /usuario|responsavel|colaborador/],
   ['project', /projeto|local/],
   ['delivery', /entrega/],
@@ -56,7 +60,7 @@ export const lineRoutes: Route[] = [
     '/lines',
     async ({ req }) => {
       await requireUser(req);
-      const rows = await sql`select id, number, carrier, line_type, account, assignee_name, project,
+      const rows = await sql`select id, number, carrier, line_type, account, employee_id, assignee_email, assignee_name, project,
                                     to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at
                              from lines order by number`;
       return json({ lines: rows.map(toLine) });
@@ -74,20 +78,22 @@ export const lineRoutes: Route[] = [
       const type = lineType(b.lineType);
       const account = str(b.account, 'conta', { max: 40 });
       const assignee = assigneeOrSpare(b.assigneeName);
+      const employeeId = employeeIdOf(b.employeeId);
+      const assigneeEmail = optionalEmail(b.assigneeEmail);
       const project = str(b.project, 'projeto', { max: 120 });
       const delivery = isoDate(b.deliveryDate, 'data de entrega');
       const notes = str(b.notes, 'observações', { max: 500 });
       const rows = await sql`
         with ins as (
-          insert into lines (number, carrier, line_type, account, assignee_name, project, delivery_date, notes)
-          values (${number}, ${carrier}, ${type}, ${account}, ${assignee}, ${project}, ${delivery}::date, ${notes})
+          insert into lines (number, carrier, line_type, account, employee_id, assignee_email, assignee_name, project, delivery_date, notes)
+          values (${number}, ${carrier}, ${type}, ${account}, ${employeeId}, ${assigneeEmail}, ${assignee}, ${project}, ${delivery}::date, ${notes})
           on conflict (number) do nothing
           returning *
         ), h as (
           insert into line_history (line_id, action, assignee_name, project, delivery_date, changed_by_name)
           select id, 'create', assignee_name, project, delivery_date, ${user.name} from ins
         )
-        select id, number, carrier, line_type, account, assignee_name, project,
+        select id, number, carrier, line_type, account, employee_id, assignee_email, assignee_name, project,
                to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at from ins`;
       if (!rows.length) throw new HttpError(409, 'Já existe uma linha com este número');
       await audit(req, user, 'line_created', { target: number, detail: { lineId: rows[0].id } });
@@ -132,12 +138,22 @@ export const lineRoutes: Route[] = [
         } catch {
           return void errors.push({ row: rowNo, message: 'Data de entrega inválida (use DD/MM/AAAA)' });
         }
+        let employeeId: string | null = null;
+        let assigneeEmail: string | null = null;
+        try {
+          employeeId = employeeIdOf(cell('employeeId'));
+          assigneeEmail = optionalEmail(cell('assigneeEmail'));
+        } catch (e: any) {
+          return void errors.push({ row: rowNo, message: e.message });
+        }
         seen.add(number);
         valid.push({
           number,
           carrier: carrier.slice(0, 60),
           line_type: /voz/i.test(cell('type')) ? 'DADOS_VOZ' : 'DADOS',
           account: cell('account').slice(0, 40) || null,
+          employee_id: employeeId,
+          assignee_email: assigneeEmail,
           assignee_name: (/^spare$/i.test(cell('assignee')) ? SPARE : cell('assignee').slice(0, 120)) || SPARE,
           project: cell('project').slice(0, 120) || null,
           delivery_date: delivery,
@@ -149,10 +165,10 @@ export const lineRoutes: Route[] = [
       if (valid.length) {
         const out = await sql`
           with ins as (
-            insert into lines (number, carrier, line_type, account, assignee_name, project, delivery_date, notes)
-            select x.number, x.carrier, x.line_type, x.account, x.assignee_name, x.project, x.delivery_date, x.notes
+            insert into lines (number, carrier, line_type, account, employee_id, assignee_email, assignee_name, project, delivery_date, notes)
+            select x.number, x.carrier, x.line_type, x.account, x.employee_id, x.assignee_email, x.assignee_name, x.project, x.delivery_date, x.notes
             from jsonb_to_recordset(${JSON.stringify(valid)}::jsonb)
-              as x(number text, carrier text, line_type text, account text, assignee_name text, project text, delivery_date date, notes text)
+              as x(number text, carrier text, line_type text, account text, employee_id text, assignee_email text, assignee_name text, project text, delivery_date date, notes text)
             on conflict (number) do nothing
             returning *
           ), h as (
@@ -185,6 +201,8 @@ export const lineRoutes: Route[] = [
       const carrier = has('carrier') ? reqStr(b.carrier, 'operadora', 60) : null;
       const type = has('lineType') ? lineType(b.lineType) : null;
       const account = has('account') ? str(b.account, 'conta', { max: 40 }) : null;
+      const employeeId = has('employeeId') ? employeeIdOf(b.employeeId) : null;
+      const assigneeEmail = has('assigneeEmail') ? optionalEmail(b.assigneeEmail) : null;
       const assignee = has('assigneeName') ? assigneeOrSpare(b.assigneeName) : null;
       const project = has('project') ? str(b.project, 'projeto', { max: 120 }) : null;
       const delivery = has('deliveryDate') ? isoDate(b.deliveryDate, 'data de entrega') : null;
@@ -199,6 +217,13 @@ export const lineRoutes: Route[] = [
               carrier = case when ${has('carrier')}::boolean then ${carrier}::text else carrier end,
               line_type = case when ${has('lineType')}::boolean then ${type}::text else line_type end,
               account = case when ${has('account')}::boolean then ${account}::text else account end,
+              -- matrícula e e-mail pertencem à pessoa: trocar o usuário sem informá-los os limpa (evita dado de outra pessoa)
+              employee_id = case when ${has('employeeId')}::boolean then ${employeeId}::text
+                                 when ${has('assigneeName')}::boolean and ${assignee}::text is distinct from assignee_name then null
+                                 else employee_id end,
+              assignee_email = case when ${has('assigneeEmail')}::boolean then ${assigneeEmail}::text
+                                    when ${has('assigneeName')}::boolean and ${assignee}::text is distinct from assignee_name then null
+                                    else assignee_email end,
               assignee_name = case when ${has('assigneeName')}::boolean then ${assignee}::text else assignee_name end,
               project = case when ${has('project')}::boolean then ${project}::text else project end,
               delivery_date = case when ${has('deliveryDate')}::boolean then ${delivery}::date else delivery_date end,
@@ -210,7 +235,7 @@ export const lineRoutes: Route[] = [
             insert into line_history (line_id, action, assignee_name, project, delivery_date, changed_by_name)
             select id, 'update', assignee_name, project, delivery_date, ${user.name} from upd
           )
-          select id, number, carrier, line_type, account, assignee_name, project,
+          select id, number, carrier, line_type, account, employee_id, assignee_email, assignee_name, project,
                  to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at from upd`;
       } catch (err: any) {
         if (err?.code === '23505') throw new HttpError(409, 'Já existe uma linha com este número');

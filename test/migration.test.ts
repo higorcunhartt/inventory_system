@@ -49,3 +49,10 @@ test('migração: banco legado (esquema original + dados) é atualizado sem perd
   assert.equal((await call('GET', '/lines', undefined, cookie)).data.lines.length, 1);
   assert.equal((await call('GET', '/audit?limit=3', undefined, cookie)).status, 200);
 });
+
+test('migração: colunas Matrícula e E-mail são criadas vazias e os dados legados seguem intactos', async () => {
+  const r = (await db.query(`select number, assignee_name, employee_id, assignee_email from lines where number = '11987654321'`)).rows[0] as any;
+  assert.equal(r.assignee_name, 'Maria');
+  assert.equal(r.employee_id, null);
+  assert.equal(r.assignee_email, null);
+});
