@@ -131,3 +131,15 @@ export function accountNumber(v: unknown): string {
   if (!/^\d{6,15}$/.test(s)) throw new HttpError(400, 'Número da conta inválido (use apenas dígitos)');
   return s;
 }
+
+/** Nome padrão das linhas livres (sem pessoa nem local/projeto). */
+export const SPARE = 'Spare';
+
+/**
+ * Usuário da linha: vazio vira "Spare" e qualquer grafia de "spare" (SPARE, spare, " Spare ") é padronizada,
+ * então nunca existe linha sem usuário e o filtro "Apenas linhas Spare" encontra todas.
+ */
+export function assigneeOrSpare(v: unknown): string {
+  const s = str(v, 'usuário', { max: 120 });
+  return s === null || s.toLowerCase() === 'spare' ? SPARE : s;
+}

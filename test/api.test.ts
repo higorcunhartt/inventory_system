@@ -120,7 +120,7 @@ test('linhas: admin cadastra, operador só altera usuário/data', async () => {
   assert.equal((await call('DELETE', `/lines/${id}`, undefined, operator)).status, 403);
 
   const clear = await call('PATCH', `/lines/${id}`, { assigneeName: '' }, operator);
-  assert.equal(clear.data.line.assigneeName, null);
+  assert.equal(clear.data.line.assigneeName, 'Spare'); // vazio vira Spare
   await call('PATCH', `/lines/${id}`, { assigneeName: 'João' }, operator);
 
   const hist = await call('GET', `/lines/${id}/history`, undefined, operator);

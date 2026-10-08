@@ -5,6 +5,7 @@ import { Modal } from '../components/Modal';
 import { formatDate, formatPhone } from '../format';
 import { Pagination } from '../components/Pagination';
 import { normalizePageSize, paginate } from '../pagination';
+import { isSpare, SPARE } from '../assignee';
 
 const PAGE_SIZE_KEY = 'lines.pageSize';
 function readPageSize(): number {
@@ -31,7 +32,7 @@ export default function Lines() {
   const [carrier, setCarrier] = useState('');
   const [project, setProject] = useState('');
   const [type, setType] = useState('');
-  const [onlyFree, setOnlyFree] = useState(false);
+  const [onlySpare, setOnlySpare] = useState(false);
   const [editing, setEditing] = useState<Line | 'new' | null>(null);
   const [importing, setImporting] = useState(false);
   const [history, setHistory] = useState<Line | null>(null);
@@ -55,14 +56,14 @@ export default function Lines() {
       if (carrier && l.carrier !== carrier) return false;
       if (project && l.project !== project) return false;
       if (type && l.lineType !== type) return false;
-      if (onlyFree && l.assigneeName) return false;
+      if (onlySpare && !isSpare(l.assigneeName)) return false;
       if (!t) return true;
       return (digits && l.number.includes(digits)) || (l.account ?? '').includes(t) || (l.assigneeName ?? '').toLowerCase().includes(t) || (l.project ?? '').toLowerCase().includes(t);
     });
-  }, [lines, q, carrier, project, type, onlyFree]);
+  }, [lines, q, carrier, project, type, onlySpare]);
 
   // Mudou a busca ou um filtro: volta para a primeira página
-  useEffect(() => setPage(1), [q, carrier, project, type, onlyFree]);
+  useEffect(() => setPage(1), [q, carrier, project, type, onlySpare]);
   const paged = useMemo(() => paginate(filtered, page, pageSize), [filtered, page, pageSize]);
 
   const goToPage = (p: number, scrollToTable = false) => {
@@ -130,7 +131,7 @@ export default function Lines() {
           ))}
         </select>
         <label className="check">
-          <input type="checkbox" checked={onlyFree} onChange={(e) => setOnlyFree(e.target.checked)} /> Só sem usuário
+          <input type="checkbox" checked={onlySpare} onChange={(e) => setOnlySpare(e.target.checked)} /> Apenas linhas Spare
         </label>
       </div>
 
@@ -173,7 +174,7 @@ export default function Lines() {
                   <span className={`chip ${l.lineType === 'DADOS_VOZ' ? 'blue' : 'gray'}`}>{TYPE_LABEL[l.lineType]}</span>
                 </td>
                 <td className="mono">{l.account ?? '—'}</td>
-                <td>{l.assigneeName ?? <span className="muted">Sem usuário</span>}</td>
+                <td>{l.assigneeName ?? SPARE}</td>
                 <td>{l.project ?? '—'}</td>
                 <td>{formatDate(l.deliveryDate)}</td>
                 <td className="actions">
@@ -277,7 +278,7 @@ function LineForm({ line, admin, carriers, projects, onClose, onSaved }: { line:
         </label>
         <label>
           Usuário da linha
-          <input value={f.assigneeName} onChange={set('assigneeName')} placeholder="Deixe vazio para liberar a linha" autoFocus={!admin} />
+          <input value={f.assigneeName} onChange={set('assigneeName')} placeholder="Deixe vazio para marcar como Spare" autoFocus={!admin} />
         </label>
         <label>
           Local (projeto)

@@ -3,7 +3,7 @@ import { HttpError, json, readJson, type Route } from '../lib/http.ts';
 import { requireUser } from '../lib/auth.ts';
 import { audit } from '../lib/audit.ts';
 import { parseCsv } from '../lib/csv.ts';
-import { isoDate, lineType, normalizeNumber, reqStr, str, uuid } from '../lib/validate.ts';
+import { assigneeOrSpare, isoDate, lineType, normalizeNumber, reqStr, SPARE, str, uuid } from '../lib/validate.ts';
 
 const toLine = (r: Record<string, any>) => ({
   id: r.id,
@@ -73,7 +73,7 @@ export const lineRoutes: Route[] = [
       const carrier = reqStr(b.carrier, 'operadora', 60);
       const type = lineType(b.lineType);
       const account = str(b.account, 'conta', { max: 40 });
-      const assignee = str(b.assigneeName, 'usuário', { max: 120 });
+      const assignee = assigneeOrSpare(b.assigneeName);
       const project = str(b.project, 'projeto', { max: 120 });
       const delivery = isoDate(b.deliveryDate, 'data de entrega');
       const notes = str(b.notes, 'observações', { max: 500 });
@@ -138,7 +138,7 @@ export const lineRoutes: Route[] = [
           carrier: carrier.slice(0, 60),
           line_type: /voz/i.test(cell('type')) ? 'DADOS_VOZ' : 'DADOS',
           account: cell('account').slice(0, 40) || null,
-          assignee_name: cell('assignee').slice(0, 120) || null,
+          assignee_name: (/^spare$/i.test(cell('assignee')) ? SPARE : cell('assignee').slice(0, 120)) || SPARE,
           project: cell('project').slice(0, 120) || null,
           delivery_date: delivery,
           notes: cell('notes').slice(0, 500) || null,
@@ -185,7 +185,7 @@ export const lineRoutes: Route[] = [
       const carrier = has('carrier') ? reqStr(b.carrier, 'operadora', 60) : null;
       const type = has('lineType') ? lineType(b.lineType) : null;
       const account = has('account') ? str(b.account, 'conta', { max: 40 }) : null;
-      const assignee = has('assigneeName') ? str(b.assigneeName, 'usuário', { max: 120 }) : null;
+      const assignee = has('assigneeName') ? assigneeOrSpare(b.assigneeName) : null;
       const project = has('project') ? str(b.project, 'projeto', { max: 120 }) : null;
       const delivery = has('deliveryDate') ? isoDate(b.deliveryDate, 'data de entrega') : null;
       const notes = has('notes') ? str(b.notes, 'observações', { max: 500 }) : null;
