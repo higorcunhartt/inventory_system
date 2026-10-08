@@ -3,6 +3,17 @@ import { api, type Line } from '../api';
 import { useAuth } from '../auth';
 import { Modal } from '../components/Modal';
 import { formatDate, formatPhone } from '../format';
+import { Pagination } from '../components/Pagination';
+import { normalizePageSize, paginate } from '../pagination';
+
+const PAGE_SIZE_KEY = 'lines.pageSize';
+function readPageSize(): number {
+  try {
+    return normalizePageSize(localStorage.getItem(PAGE_SIZE_KEY));
+  } catch {
+    return normalizePageSize(null); // armazenamento indisponível (modo privado etc.)
+  }
+}
 
 const CARRIERS = ['Vivo', 'Claro', 'TIM', 'Oi', 'Algar'];
 const TYPE_LABEL = { DADOS: 'Dados', DADOS_VOZ: 'Dados e Voz' } as const;
@@ -24,6 +35,8 @@ export default function Lines() {
   const [editing, setEditing] = useState<Line | 'new' | null>(null);
   const [importing, setImporting] = useState(false);
   const [history, setHistory] = useState<Line | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(readPageSize);
 
   const load = () =>
     api<{ lines: Line[] }>('GET', '/lines')
@@ -47,6 +60,25 @@ export default function Lines() {
       return (digits && l.number.includes(digits)) || (l.account ?? '').includes(t) || (l.assigneeName ?? '').toLowerCase().includes(t) || (l.project ?? '').toLowerCase().includes(t);
     });
   }, [lines, q, carrier, project, type, onlyFree]);
+
+  // Mudou a busca ou um filtro: volta para a primeira página
+  useEffect(() => setPage(1), [q, carrier, project, type, onlyFree]);
+  const paged = useMemo(() => paginate(filtered, page, pageSize), [filtered, page, pageSize]);
+
+  const goToPage = (p: number, scrollToTable = false) => {
+    setPage(p);
+    if (scrollToTable) document.getElementById('lines-table')?.scrollIntoView({ block: 'start' });
+  };
+  const changePageSize = (n: number) => {
+    const size = normalizePageSize(n);
+    setPageSize(size);
+    setPage(1);
+    try {
+      localStorage.setItem(PAGE_SIZE_KEY, String(size));
+    } catch {
+      /* sem armazenamento: vale só nesta visita */
+    }
+  };
 
   async function remove(l: Line) {
     if (!confirm(`Excluir a linha ${formatPhone(l.number)}? O histórico de alterações dela também será removido.`)) return;
@@ -103,7 +135,8 @@ export default function Lines() {
       </div>
 
       {error && <p className="error">{error}</p>}
-      <div className="table-wrap">
+      <Pagination paged={paged} onPage={(p) => goToPage(p)} onSize={changePageSize} label="Paginação (acima da tabela)" />
+      <div className="table-wrap" id="lines-table">
         <table>
           <thead>
             <tr>
@@ -132,7 +165,7 @@ export default function Lines() {
                 </td>
               </tr>
             )}
-            {filtered.map((l) => (
+            {paged.items.map((l) => (
               <tr key={l.id}>
                 <td className="mono">{formatPhone(l.number)}</td>
                 <td>{l.carrier}</td>
@@ -161,6 +194,7 @@ export default function Lines() {
           </tbody>
         </table>
       </div>
+      <Pagination paged={paged} onPage={(p) => goToPage(p, true)} onSize={changePageSize} label="Paginação (abaixo da tabela)" />
 
       {editing && (
         <LineForm
