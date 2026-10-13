@@ -90,4 +90,6 @@ npx netlify-cli@27.11.2 deploy --prod --dir=dist --functions=netlify/functions  
 ```
 
 - Não use `--build` e **não ative o deploy contínuo do Netlify** enquanto os segredos não puderem ficar restritos a Functions/Runtime.
+- No painel do Netlify, os builds automáticos estão **parados** (Project configuration → Build & deploy → Continuous deployment → Build settings → Build status = *Stopped builds*). Se alguém reativar, cada push na `main` gera um deploy a mais (15 créditos) e roda o build no Netlify com os segredos. Verificação: `npx netlify-cli@27.11.2 api getSite --data '{"site_id":"<id>"}'` deve mostrar `build_settings.stop_builds: true`.
+- Cada deploy de produção custa 15 créditos no plano gratuito (300/mês): junte várias mudanças em um único deploy.
 - A ferramenta do Netlify não é dependência do projeto; use sempre a versão fixa acima.
