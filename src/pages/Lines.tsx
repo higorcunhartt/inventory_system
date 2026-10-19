@@ -6,6 +6,7 @@ import { formatDate, formatPhone } from '../format';
 import { Pagination } from '../components/Pagination';
 import { normalizePageSize, paginate } from '../pagination';
 import { isSpare, SPARE } from '../assignee';
+import { hasActiveFilters } from '../filters';
 
 const PAGE_SIZE_KEY = 'lines.pageSize';
 function readPageSize(): number {
@@ -19,8 +20,8 @@ function readPageSize(): number {
 const CARRIERS = ['Vivo', 'Claro', 'TIM', 'Oi', 'Algar'];
 const TYPE_LABEL = { DADOS: 'Dados', DADOS_VOZ: 'Dados e Voz' } as const;
 
-type Form = { number: string; carrier: string; lineType: 'DADOS' | 'DADOS_VOZ'; account: string; assigneeName: string; employeeId: string; assigneeEmail: string; project: string; deliveryDate: string; notes: string };
-const emptyForm: Form = { number: '', carrier: 'Vivo', lineType: 'DADOS_VOZ', account: '', assigneeName: '', employeeId: '', assigneeEmail: '', project: '', deliveryDate: '', notes: '' };
+type Form = { number: string; carrier: string; lineType: 'DADOS' | 'DADOS_VOZ'; account: string; assigneeName: string; employeeId: string; assigneeEmail: string; device: string; project: string; deliveryDate: string; notes: string };
+const emptyForm: Form = { number: '', carrier: 'Vivo', lineType: 'DADOS_VOZ', account: '', assigneeName: '', employeeId: '', assigneeEmail: '', device: '', project: '', deliveryDate: '', notes: '' };
 
 export default function Lines() {
   const { user } = useAuth();
@@ -49,6 +50,8 @@ export default function Lines() {
   const carriers = useMemo(() => [...new Set(lines.map((l) => l.carrier))].sort(), [lines]);
   const projects = useMemo(() => [...new Set(lines.map((l) => l.project).filter(Boolean) as string[])].sort(), [lines]);
 
+  const devices = useMemo(() => [...new Set(lines.map((l) => l.device).filter(Boolean) as string[])].sort(), [lines]);
+
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     const digits = t.replace(/\D/g, '');
@@ -58,7 +61,7 @@ export default function Lines() {
       if (type && l.lineType !== type) return false;
       if (onlySpare && !isSpare(l.assigneeName)) return false;
       if (!t) return true;
-      return (digits && l.number.includes(digits)) || (l.account ?? '').includes(t) || (l.employeeId ?? '').toLowerCase().includes(t) || (l.assigneeEmail ?? '').toLowerCase().includes(t) || (l.assigneeName ?? '').toLowerCase().includes(t) || (l.project ?? '').toLowerCase().includes(t);
+      return (digits && l.number.includes(digits)) || (l.account ?? '').includes(t) || (l.employeeId ?? '').toLowerCase().includes(t) || (l.assigneeEmail ?? '').toLowerCase().includes(t) || (l.device ?? '').toLowerCase().includes(t) || (l.assigneeName ?? '').toLowerCase().includes(t) || (l.project ?? '').toLowerCase().includes(t);
     });
   }, [lines, q, carrier, project, type, onlySpare]);
 
@@ -69,6 +72,14 @@ export default function Lines() {
   const goToPage = (p: number, scrollToTable = false) => {
     setPage(p);
     if (scrollToTable) document.getElementById('lines-table')?.scrollIntoView({ block: 'start' });
+  };
+  const filtersOn = hasActiveFilters({ q, carrier, project, type, onlySpare });
+  const clearFilters = () => {
+    setQ('');
+    setCarrier('');
+    setProject('');
+    setType('');
+    setOnlySpare(false);
   };
   const changePageSize = (n: number) => {
     const size = normalizePageSize(n);
@@ -112,7 +123,7 @@ export default function Lines() {
       </div>
 
       <div className="filters">
-        <input placeholder="Buscar número, conta, usuário, matrícula, e-mail ou projeto…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input placeholder="Buscar número, conta, usuário, matrícula, e-mail, dispositivo ou projeto…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={carrier} onChange={(e) => setCarrier(e.target.value)} aria-label="Operadora">
           <option value="">Todas as operadoras</option>
           {carriers.map((c) => (
@@ -133,6 +144,9 @@ export default function Lines() {
         <label className="check">
           <input type="checkbox" checked={onlySpare} onChange={(e) => setOnlySpare(e.target.checked)} /> Apenas linhas Spare
         </label>
+        <button type="button" className="btn" onClick={clearFilters} disabled={!filtersOn}>
+          Limpar filtros
+        </button>
       </div>
 
       {error && <p className="error">{error}</p>}
@@ -148,6 +162,7 @@ export default function Lines() {
               <th>Usuário</th>
               <th>Matrícula</th>
               <th>E-mail</th>
+              <th>Dispositivo</th>
               <th>Local (projeto)</th>
               <th>Entrega</th>
               <th />
@@ -156,14 +171,14 @@ export default function Lines() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={10} className="muted">
+                <td colSpan={11} className="muted">
                   Carregando…
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="muted">
+                <td colSpan={11} className="muted">
                   Nenhuma linha encontrada.
                 </td>
               </tr>
@@ -179,6 +194,7 @@ export default function Lines() {
                 <td>{l.assigneeName ?? SPARE}</td>
                 <td className="mono">{l.employeeId ?? '—'}</td>
                 <td>{l.assigneeEmail ?? '—'}</td>
+                <td>{l.device ?? '—'}</td>
                 <td>{l.project ?? '—'}</td>
                 <td>{formatDate(l.deliveryDate)}</td>
                 <td className="actions">
@@ -207,6 +223,7 @@ export default function Lines() {
           admin={!!admin}
           carriers={[...new Set([...CARRIERS, ...carriers])]}
           projects={projects}
+          devices={devices}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -227,10 +244,10 @@ export default function Lines() {
   );
 }
 
-function LineForm({ line, admin, carriers, projects, onClose, onSaved }: { line: Line | null; admin: boolean; carriers: string[]; projects: string[]; onClose: () => void; onSaved: () => void }) {
+function LineForm({ line, admin, carriers, projects, devices, onClose, onSaved }: { line: Line | null; admin: boolean; carriers: string[]; projects: string[]; devices: string[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<Form>(
     line
-      ? { number: line.number, carrier: line.carrier, lineType: line.lineType, account: line.account ?? '', assigneeName: line.assigneeName ?? '', employeeId: line.employeeId ?? '', assigneeEmail: line.assigneeEmail ?? '', project: line.project ?? '', deliveryDate: line.deliveryDate ?? '', notes: line.notes ?? '' }
+      ? { number: line.number, carrier: line.carrier, lineType: line.lineType, account: line.account ?? '', assigneeName: line.assigneeName ?? '', employeeId: line.employeeId ?? '', assigneeEmail: line.assigneeEmail ?? '', device: line.device ?? '', project: line.project ?? '', deliveryDate: line.deliveryDate ?? '', notes: line.notes ?? '' }
       : emptyForm,
   );
   const [error, setError] = useState('');
@@ -292,7 +309,16 @@ function LineForm({ line, admin, carriers, projects, onClose, onSaved }: { line:
           E-mail
           <input type="email" value={f.assigneeEmail} onChange={set('assigneeEmail')} disabled={locked} maxLength={254} />
         </label>
-        {!locked && line && <p className="muted full">Ao trocar o usuário, atualize também a matrícula e o e-mail. Se a equipe trocar o usuário, os dois campos são limpos.</p>}
+        <label>
+          Dispositivo (modelo do celular)
+          <input list="devices" value={f.device} onChange={set('device')} disabled={locked} maxLength={80} placeholder="ex.: Samsung Galaxy A54" />
+          <datalist id="devices">
+            {devices.map((d) => (
+              <option key={d} value={d} />
+            ))}
+          </datalist>
+        </label>
+        {!locked && line && <p className="muted full">Ao trocar o usuário, atualize também a matrícula, o e-mail e o dispositivo. Se a equipe trocar o usuário, esses três campos são limpos.</p>}
         <label>
           Local (projeto)
           <input list="projects" value={f.project} onChange={set('project')} disabled={locked} />
@@ -347,7 +373,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   return (
     <Modal title="Importar linhas (CSV)" onClose={onClose}>
       <p className="muted">
-        Colunas: <strong>Número; Operadora; Tipo; Conta; Usuário; Matrícula; E-mail; Projeto; Data de entrega; Observações</strong> (Tipo: "Dados" ou "Dados e Voz"; data: DD/MM/AAAA). Números já cadastrados são ignorados.
+        Colunas: <strong>Número; Operadora; Tipo; Conta; Usuário; Matrícula; E-mail; Dispositivo; Projeto; Data de entrega; Observações</strong> (Tipo: "Dados" ou "Dados e Voz"; data: DD/MM/AAAA). Números já cadastrados são ignorados.
       </p>
       <input
         type="file"

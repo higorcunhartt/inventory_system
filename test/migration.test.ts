@@ -56,3 +56,8 @@ test('migração: colunas Matrícula e E-mail são criadas vazias e os dados leg
   assert.equal(r.employee_id, null);
   assert.equal(r.assignee_email, null);
 });
+
+test('migração: coluna Dispositivo é criada vazia', async () => {
+  const r = (await db.query(`select device from lines where number = '11987654321'`)).rows[0] as any;
+  assert.equal(r.device, null);
+});

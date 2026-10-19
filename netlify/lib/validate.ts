@@ -161,3 +161,12 @@ export function optionalEmail(v: unknown): string | null {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new HttpError(400, 'E-mail inválido');
   return e;
 }
+
+/** Dispositivo (modelo do celular) em texto livre e opcional, até 80 caracteres, sem caracteres de controle. */
+export function deviceOf(v: unknown): string | null {
+  const s = str(v, 'dispositivo', { max: 80 });
+  if (s === null) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(s)) throw new HttpError(400, 'Dispositivo contém caracteres inválidos');
+  return s.replace(/\s+/g, ' ');
+}

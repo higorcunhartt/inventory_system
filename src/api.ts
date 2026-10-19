@@ -31,6 +31,7 @@ export type Line = {
   account: string | null;
   employeeId: string | null;
   assigneeEmail: string | null;
+  device: string | null;
   assigneeName: string | null;
   project: string | null;
   deliveryDate: string | null;

@@ -131,3 +131,5 @@ create index if not exists password_tokens_user_idx on password_tokens (user_id,
 
 alter table lines add column if not exists employee_id text;
 alter table lines add column if not exists assignee_email text;
+
+alter table lines add column if not exists device text;
