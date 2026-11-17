@@ -79,17 +79,10 @@ As sessões ativas são encerradas na troca de versão (todos entram de novo).
 
 ### Publicando
 
-No plano gratuito do Netlify não é possível restringir o escopo das variáveis, e um build feito pelo Netlify (ou por
-`deploy --build`) recebe `DATABASE_URL`, `JWT_SECRET` e as credenciais SMTP. Para que nenhum pacote de terceiros rode com esses
-segredos, **compile localmente, sem as variáveis**, e publique só os artefatos (as funções recebem as variáveis em tempo de execução):
+Produção: `https://inventario-movel-rtt.netlify.app` (time RTTSHOP, plano pago). O site é ligado a este repositório e **cada push na `main` publica automaticamente** (build no Netlify: `npm run build`, pasta `dist`, funções em `netlify/functions`, tudo definido em `netlify.toml`).
 
-```bash
-npm ci --ignore-scripts      # instala só do lockfile, sem executar scripts de pacotes
-npm test && npm run build    # tipos, testes e build (nenhuma variável do site é usada)
-npx netlify-cli@27.11.2 deploy --prod --dir=dist --functions=netlify/functions   # SEM --build
-```
-
-- Não use `--build` e **não ative o deploy contínuo do Netlify** enquanto os segredos não puderem ficar restritos a Functions/Runtime.
-- No painel do Netlify, os builds automáticos estão **parados** (Project configuration → Build & deploy → Continuous deployment → Build settings → Build status = *Stopped builds*). Se alguém reativar, cada push na `main` gera um deploy a mais (15 créditos) e roda o build no Netlify com os segredos. Verificação: `npx netlify-cli@27.11.2 api getSite --data '{"site_id":"<id>"}'` deve mostrar `build_settings.stop_builds: true`.
-- Cada deploy de produção custa 15 créditos no plano gratuito (300/mês): junte várias mudanças em um único deploy.
-- A ferramenta do Netlify não é dependência do projeto; use sempre a versão fixa acima.
+- **Segredos:** `DATABASE_URL`, `JWT_SECRET`, `SMTP_USER` e `SMTP_PASS` ficam com escopo só de *Functions* e *Runtime* (marcados como secretos). O build não os recebe; confira isso sempre que mudar as variáveis.
+- **Créditos:** cada deploy de produção consome créditos do plano. Junte várias mudanças em um push só e não use deploys de preview nem de branch (desligados em *Build & deploy → Continuous deployment*).
+- **Banco antes do código:** se a mudança altera `db/schema.sql`, rode `npm run migrate` **antes** de dar o push (o esquema é sempre aditivo, então o código antigo continua funcionando).
+- **Variáveis:** mudança de variável só vale no próximo deploy. Não coloque `< >` nem aspas nos valores (exceto `MAIL_FROM` com nome de exibição).
+- **Emergência (sem o GitHub):** compile localmente e publique pela CLI: `npm ci --ignore-scripts && npm test && npm run build`, depois `npx netlify-cli@27.11.2 deploy --prod --dir=dist --functions=netlify/functions --site <id do site>` (sem `--build`).
