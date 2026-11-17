@@ -161,7 +161,7 @@ export default function Lines() {
               <th>Conta</th>
               <th>Usuário</th>
               <th>Matrícula</th>
-              <th>E-mail</th>
+              <th className="nowrap">E-mail</th>
               <th>Dispositivo</th>
               <th>Local (projeto)</th>
               <th>Entrega</th>
