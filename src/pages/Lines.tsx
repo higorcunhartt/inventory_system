@@ -37,6 +37,7 @@ export default function Lines() {
   const [editing, setEditing] = useState<Line | 'new' | null>(null);
   const [importing, setImporting] = useState(false);
   const [history, setHistory] = useState<Line | null>(null);
+  const [accountFor, setAccountFor] = useState<Line | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(readPageSize);
 
@@ -224,6 +225,10 @@ export default function Lines() {
           carriers={[...new Set([...CARRIERS, ...carriers])]}
           projects={projects}
           devices={devices}
+          onAccount={(l) => {
+            setEditing(null);
+            setAccountFor(l);
+          }}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -240,11 +245,21 @@ export default function Lines() {
         />
       )}
       {history && <HistoryModal line={history} onClose={() => setHistory(null)} />}
+      {accountFor && (
+        <DeviceAccountModal
+          line={accountFor}
+          admin={!!admin}
+          onClose={() => setAccountFor(null)}
+          onChanged={() => {
+            load();
+          }}
+        />
+      )}
     </section>
   );
 }
 
-function LineForm({ line, admin, carriers, projects, devices, onClose, onSaved }: { line: Line | null; admin: boolean; carriers: string[]; projects: string[]; devices: string[]; onClose: () => void; onSaved: () => void }) {
+function LineForm({ line, admin, carriers, projects, devices, onAccount, onClose, onSaved }: { line: Line | null; admin: boolean; carriers: string[]; projects: string[]; devices: string[]; onAccount: (l: Line) => void; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<Form>(
     line
       ? { number: line.number, carrier: line.carrier, lineType: line.lineType, account: line.account ?? '', assigneeName: line.assigneeName ?? '', employeeId: line.employeeId ?? '', assigneeEmail: line.assigneeEmail ?? '', device: line.device ?? '', project: line.project ?? '', deliveryDate: line.deliveryDate ?? '', notes: line.notes ?? '' }
@@ -319,6 +334,14 @@ function LineForm({ line, admin, carriers, projects, devices, onClose, onSaved }
           </datalist>
         </label>
         {!locked && line && <p className="muted full">Ao trocar o usuário, atualize também a matrícula, o e-mail e o dispositivo. Se a equipe trocar o usuário, esses três campos são limpos.</p>}
+        {line && (
+          <div className="full row between wrap">
+            <span className="muted">Conta de e-mail do aparelho: {line.hasDeviceAccount ? 'cadastrada' : 'não cadastrada'} (dados ocultos)</span>
+            <button type="button" className="btn small" onClick={() => onAccount(line)}>
+              Conta do aparelho…
+            </button>
+          </div>
+        )}
         <label>
           Local (projeto)
           <input list="projects" value={f.project} onChange={set('project')} disabled={locked} />
@@ -345,6 +368,171 @@ function LineForm({ line, admin, carriers, projects, devices, onClose, onSaved }
           <button className="btn primary" disabled={busy}>
             Salvar
           </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function DeviceAccountModal({ line, admin, onClose, onChanged }: { line: Line; admin: boolean; onClose: () => void; onChanged: () => void }) {
+  const [has, setHas] = useState(line.hasDeviceAccount);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [shown, setShown] = useState(false); // senha visível no campo
+  const [revealed, setRevealed] = useState(false);
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Por segurança, os dados revelados somem da tela depois de 60 segundos
+  useEffect(() => {
+    if (!revealed) return;
+    const t = setTimeout(() => {
+      setEmail('');
+      setPassword('');
+      setShown(false);
+      setRevealed(false);
+      setMsg('Dados ocultados por segurança. Confirme a senha para ver de novo.');
+    }, 60_000);
+    return () => clearTimeout(t);
+  }, [revealed]);
+
+  async function reveal(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    setMsg('');
+    try {
+      const r = await api<{ email: string; password: string }>('POST', `/lines/${line.id}/device-account/reveal`, { confirmPassword: confirm });
+      setEmail(r.email);
+      setPassword(r.password);
+      setRevealed(true);
+      setConfirm('');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    setMsg('');
+    try {
+      await api('PUT', `/lines/${line.id}/device-account`, { email, password });
+      setHas(true);
+      setEmail('');
+      setPassword('');
+      setShown(false);
+      setRevealed(false);
+      setMsg('Credenciais salvas (cifradas).');
+      onChanged();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!window.confirm('Remover o e-mail e a senha guardados para este aparelho?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api('DELETE', `/lines/${line.id}/device-account`);
+      setHas(false);
+      setEmail('');
+      setPassword('');
+      setRevealed(false);
+      setMsg('Credenciais removidas.');
+      onChanged();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const copy = (text: string, what: string) =>
+    navigator.clipboard
+      ?.writeText(text)
+      .then(() => setMsg(`${what} copiado.`))
+      .catch(() => setError('Não foi possível copiar. Selecione e copie manualmente.'));
+
+  return (
+    <Modal title={`Conta do aparelho · ${formatPhone(line.number)}`} onClose={onClose}>
+      <p className="muted">
+        E-mail e senha da conta (ex.: Gmail padrão) configurada no aparelho. Ficam cifrados no banco e não aparecem na lista. Ver a senha exige
+        confirmar a sua senha do sistema, e cada consulta fica registrada na Auditoria.
+      </p>
+      <p>
+        <strong>Situação:</strong> {has ? 'credenciais cadastradas' : 'nada cadastrado'}
+      </p>
+
+      {has && !revealed && (
+        <form onSubmit={reveal} className="form-grid">
+          <label className="full">
+            Sua senha do sistema (para ver as credenciais salvas)
+            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="current-password" required />
+          </label>
+          <div className="row end full">
+            <button className="btn" disabled={busy || !confirm}>
+              Mostrar credenciais salvas
+            </button>
+          </div>
+        </form>
+      )}
+
+      <form onSubmit={save} className="form-grid">
+        <label className="full">
+          E-mail do aparelho
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" maxLength={254} placeholder="conta.padrao@gmail.com" required />
+        </label>
+        <label className="full">
+          Senha do e-mail do aparelho
+          <input type={shown ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" maxLength={200} required />
+        </label>
+        <div className="row wrap full">
+          <button type="button" className="btn small" onClick={() => setShown(!shown)}>
+            {shown ? 'Ocultar senha' : 'Exibir senha'}
+          </button>
+          {revealed && (
+            <>
+              <button type="button" className="btn small" onClick={() => copy(email, 'E-mail')}>
+                Copiar e-mail
+              </button>
+              <button type="button" className="btn small" onClick={() => copy(password, 'Senha')}>
+                Copiar senha
+              </button>
+            </>
+          )}
+        </div>
+        <p className="muted full">{has ? 'Para trocar, informe o e-mail e a senha novos (os dois campos) e salve.' : 'Informe o e-mail e a senha e salve.'}</p>
+        {msg && (
+          <p className="full" role="status">
+            {msg}
+          </p>
+        )}
+        {error && <p className="error full">{error}</p>}
+        <div className="row between full">
+          {admin ? (
+            <button type="button" className="btn danger" onClick={remove} disabled={busy || !has}>
+              Remover credenciais
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="row">
+            <button type="button" className="btn" onClick={onClose}>
+              Fechar
+            </button>
+            <button className="btn primary" disabled={busy}>
+              Salvar
+            </button>
+          </div>
         </div>
       </form>
     </Modal>

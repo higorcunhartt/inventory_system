@@ -1,9 +1,10 @@
 import { sql } from '../lib/db.ts';
 import { HttpError, json, readJson, type Route } from '../lib/http.ts';
-import { requireUser } from '../lib/auth.ts';
 import { audit } from '../lib/audit.ts';
 import { parseCsv } from '../lib/csv.ts';
-import { assigneeOrSpare, deviceOf, employeeIdOf, isoDate, lineType, normalizeNumber, optionalEmail, reqStr, SPARE, str, uuid } from '../lib/validate.ts';
+import { requireReauth, requireUser } from '../lib/auth.ts';
+import { openAccount, sealAccount } from '../lib/vault.ts';
+import { assigneeOrSpare, deviceOf, email as emailOf, employeeIdOf, isoDate, lineType, normalizeNumber, optionalEmail, reqStr, SPARE, str, uuid } from '../lib/validate.ts';
 
 const toLine = (r: Record<string, any>) => ({
   id: r.id,
@@ -14,6 +15,7 @@ const toLine = (r: Record<string, any>) => ({
   employeeId: r.employee_id,
   assigneeEmail: r.assignee_email,
   device: r.device,
+  hasDeviceAccount: !!r.has_device_account,
   assigneeName: r.assignee_name,
   project: r.project,
   deliveryDate: r.delivery_date,
@@ -62,7 +64,7 @@ export const lineRoutes: Route[] = [
     '/lines',
     async ({ req }) => {
       await requireUser(req);
-      const rows = await sql`select id, number, carrier, line_type, account, employee_id, assignee_email, device, assignee_name, project,
+      const rows = await sql`select id, number, carrier, line_type, account, employee_id, assignee_email, device, (device_account_enc is not null) as has_device_account, assignee_name, project,
                                     to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at
                              from lines order by number`;
       return json({ lines: rows.map(toLine) });
@@ -96,7 +98,7 @@ export const lineRoutes: Route[] = [
           insert into line_history (line_id, action, assignee_name, project, delivery_date, changed_by_name)
           select id, 'create', assignee_name, project, delivery_date, ${user.name} from ins
         )
-        select id, number, carrier, line_type, account, employee_id, assignee_email, device, assignee_name, project,
+        select id, number, carrier, line_type, account, employee_id, assignee_email, device, (device_account_enc is not null) as has_device_account, assignee_name, project,
                to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at from ins`;
       if (!rows.length) throw new HttpError(409, 'Já existe uma linha com este número');
       await audit(req, user, 'line_created', { target: number, detail: { lineId: rows[0].id } });
@@ -246,7 +248,7 @@ export const lineRoutes: Route[] = [
             insert into line_history (line_id, action, assignee_name, project, delivery_date, changed_by_name)
             select id, 'update', assignee_name, project, delivery_date, ${user.name} from upd
           )
-          select id, number, carrier, line_type, account, employee_id, assignee_email, device, assignee_name, project,
+          select id, number, carrier, line_type, account, employee_id, assignee_email, device, (device_account_enc is not null) as has_device_account, assignee_name, project,
                  to_char(delivery_date, 'YYYY-MM-DD') as delivery_date, notes, updated_at from upd`;
       } catch (err: any) {
         if (err?.code === '23505') throw new HttpError(409, 'Já existe uma linha com este número');
@@ -289,6 +291,60 @@ export const lineRoutes: Route[] = [
           changedAt: r.changed_at,
         })),
       });
+    },
+  ],
+
+  // Conta de e-mail (ex.: Gmail padrão) configurada no aparelho. Administradores e equipe de TI veem e cadastram; só administradores
+  // removem. Fica cifrada, nunca aparece na listagem e a senha só é entregue depois de a pessoa confirmar a própria senha do sistema.
+  // Nada disso entra na auditoria nem no histórico (só quem viu/alterou e quando).
+  [
+    'POST',
+    '/lines/:id/device-account/reveal',
+    async ({ req, params }) => {
+      const user = await requireUser(req);
+      const b = await readJson(req);
+      await requireReauth(req, user.id, b.confirmPassword);
+      const [row] = await sql`select number, device_account_enc from lines where id = ${uuid(params.id)}`;
+      if (!row) throw new HttpError(404, 'Linha não encontrada');
+      if (!row.device_account_enc) throw new HttpError(404, 'Esta linha não tem conta de aparelho cadastrada');
+      const acc = openAccount(uuid(params.id), row.device_account_enc);
+      await audit(req, user, 'device_account_revealed', { target: row.number });
+      return json({ email: acc.email, password: acc.password });
+    },
+  ],
+
+  [
+    'PUT',
+    '/lines/:id/device-account',
+    async ({ req, params }) => {
+      const user = await requireUser(req);
+      const lineId = uuid(params.id);
+      const b = await readJson(req);
+      const accEmail = emailOf(b.email);
+      if (typeof b.password !== 'string' || b.password.length === 0) throw new HttpError(400, 'Campo obrigatório: senha do e-mail do aparelho');
+      if (b.password.length > 200) throw new HttpError(400, 'Campo muito longo: senha do e-mail do aparelho');
+      // eslint-disable-next-line no-control-regex
+      if (/[\u0000-\u001f\u007f]/.test(b.password)) throw new HttpError(400, 'A senha contém caracteres inválidos');
+      const sealed = sealAccount(lineId, { email: accEmail, password: b.password });
+      const rows = await sql`update lines set device_account_enc = ${sealed}, device_account_updated_at = now(), updated_at = now()
+                             where id = ${lineId} returning number`;
+      if (!rows.length) throw new HttpError(404, 'Linha não encontrada');
+      await audit(req, user, 'device_account_saved', { target: rows[0].number, detail: { lineId } });
+      return json({ ok: true });
+    },
+  ],
+
+  [
+    'DELETE',
+    '/lines/:id/device-account',
+    async ({ req, params }) => {
+      const user = await requireUser(req, { roles: ['admin'] });
+      const lineId = uuid(params.id);
+      const rows = await sql`update lines set device_account_enc = null, device_account_updated_at = null, updated_at = now()
+                             where id = ${lineId} returning number`;
+      if (!rows.length) throw new HttpError(404, 'Linha não encontrada');
+      await audit(req, user, 'device_account_deleted', { target: rows[0].number, detail: { lineId } });
+      return json({ ok: true });
     },
   ],
 ];

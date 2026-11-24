@@ -133,3 +133,7 @@ alter table lines add column if not exists employee_id text;
 alter table lines add column if not exists assignee_email text;
 
 alter table lines add column if not exists device text;
+
+-- Conta de e-mail configurada no aparelho (cifrada no aplicativo, o banco só guarda texto cifrado)
+alter table lines add column if not exists device_account_enc text;
+alter table lines add column if not exists device_account_updated_at timestamptz;

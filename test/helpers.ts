@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 
 process.env.JWT_SECRET = 'x'.repeat(48);
+process.env.FIELD_ENCRYPTION_KEY = 'k'.repeat(48);
 process.env.NETLIFY_DEV = 'true'; // e-mail MFA vai para o console
 delete process.env.RESEND_API_KEY;
 delete process.env.SMTP_HOST;

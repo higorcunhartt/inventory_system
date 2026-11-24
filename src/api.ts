@@ -32,6 +32,7 @@ export type Line = {
   employeeId: string | null;
   assigneeEmail: string | null;
   device: string | null;
+  hasDeviceAccount: boolean;
   assigneeName: string | null;
   project: string | null;
   deliveryDate: string | null;

@@ -51,6 +51,7 @@ npm run build             # typecheck + build de produção
 |---|---|
 | `DATABASE_URL` | Connection string do Neon |
 | `JWT_SECRET` | ≥ 32 caracteres aleatórios |
+| `FIELD_ENCRYPTION_KEY` | ≥ 32 caracteres aleatórios (diferente do `JWT_SECRET`). Cifra o e-mail/senha da conta do aparelho. **Guarde uma cópia**: sem ela as credenciais salvas não são recuperáveis |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | Servidor SMTP que envia o código MFA (porta 587 = STARTTLS, 465 = TLS) |
 | `MAIL_FROM` | Remetente, ex.: `Inventário Móvel <usuario@seudominio.com.br>` |
 | `RESEND_API_KEY` | Opcional: alternativa ao SMTP |
@@ -66,6 +67,7 @@ npm run build             # typecheck + build de produção
 - Sessões revogáveis (`token_version`): logout, troca/reset de senha, desativação e mudança de papel encerram sessões antigas.
 - Criar usuário e mudar papel/status exigem a senha do administrador; sempre resta um administrador ativo (gatilho no banco).
 - Ninguém define a senha de outra pessoa: o usuário novo recebe por e-mail um link de uso único (24 h) e define a própria senha; "Esqueci minha senha" usa o mesmo mecanismo com link de 1 h. O token vai no fragmento da URL (`#t=`), é guardado só como HMAC no banco e o login continua exigindo o código MFA por e-mail.
+- **Conta do aparelho** (e-mail e senha configurados no celular, em *Editar linha → Conta do aparelho*): cifrada com AES-256-GCM (chave `FIELD_ENCRYPTION_KEY`, presa ao id da linha), nunca vai para a listagem, o histórico ou a auditoria. Administradores e equipe de TI consultam e cadastram; só administradores removem. Para ver a senha a pessoa confirma a própria senha do sistema, a consulta fica na Auditoria (`device_account_revealed`) e os dados somem da tela após 60 s.
 - Trilha de auditoria somente de inserção (`audit_log`), que sobrevive à exclusão de dados.
 - CSRF: `SameSite=Strict` + cabeçalho `X-Requested-With` + Fetch Metadata; exportação CSV neutraliza fórmulas.
 - Cabeçalhos de segurança e CSP (sem `unsafe-inline`) em `netlify.toml` e nas respostas da API.
