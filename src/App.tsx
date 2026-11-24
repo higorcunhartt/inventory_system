@@ -34,7 +34,7 @@ export default function App() {
         </nav>
         <div className="who">
           <span>
-            {user.name} <small className="muted">({admin ? 'Administrador' : 'Equipe'})</small>
+            {user.name} <small className="muted">({admin ? 'Administrador' : user.role === 'viewer' ? 'Consulta' : 'Equipe'})</small>
           </span>
           <button className="btn ghost" onClick={logout}>
             Sair

@@ -21,7 +21,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   return data as T;
 }
 
-export type User = { id: string; email: string; name: string; role: 'admin' | 'operator'; mustChangePassword: boolean };
+export type User = { id: string; email: string; name: string; role: 'admin' | 'operator' | 'viewer'; mustChangePassword: boolean };
 export type AppUser = User & { active: boolean; pendingLink: boolean; createdAt: string };
 export type Line = {
   id: string;

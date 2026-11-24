@@ -9,7 +9,8 @@ import { audit } from './audit.ts';
 const SESSION_SECONDS = 8 * 60 * 60;
 const COOKIE = 'session';
 
-export type SessionUser = { id: string; email: string; name: string; role: 'admin' | 'operator'; mustChangePassword: boolean };
+export type Role = 'admin' | 'operator' | 'viewer';
+export type SessionUser = { id: string; email: string; name: string; role: Role; mustChangePassword: boolean };
 
 function secretKey() {
   const s = process.env.JWT_SECRET;
@@ -62,7 +63,7 @@ function readCookie(req: Request): string | null {
 
 export async function requireUser(
   req: Request,
-  opts: { roles?: Array<'admin' | 'operator'>; allowPasswordChange?: boolean } = {},
+  opts: { roles?: Role[]; allowPasswordChange?: boolean } = {},
 ): Promise<SessionUser> {
   const token = readCookie(req);
   if (!token) throw new HttpError(401, 'Não autenticado', 'UNAUTHENTICATED');

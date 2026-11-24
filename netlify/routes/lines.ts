@@ -195,7 +195,7 @@ export const lineRoutes: Route[] = [
     'PATCH',
     '/lines/:id',
     async ({ req, params }) => {
-      const user = await requireUser(req);
+      const user = await requireUser(req, { roles: ['admin', 'operator'] });
       const lineId = uuid(params.id);
       const b = await readJson(req);
       if (Object.keys(b).length === 0) throw new HttpError(400, 'Nenhum campo para alterar');
@@ -300,7 +300,7 @@ export const lineRoutes: Route[] = [
     'POST',
     '/lines/:id/device-account/reveal',
     async ({ req, params }) => {
-      const user = await requireUser(req);
+      const user = await requireUser(req, { roles: ['admin', 'operator'] });
       const b = await readJson(req);
       await requireReauth(req, user.id, b.confirmPassword);
       const [row] = await sql`select number, device_account_enc from lines where id = ${uuid(params.id)}`;
@@ -316,7 +316,7 @@ export const lineRoutes: Route[] = [
     'PUT',
     '/lines/:id/device-account',
     async ({ req, params }) => {
-      const user = await requireUser(req);
+      const user = await requireUser(req, { roles: ['admin', 'operator'] });
       const lineId = uuid(params.id);
       const b = await readJson(req);
       const accEmail = emailOf(b.email);
@@ -337,7 +337,7 @@ export const lineRoutes: Route[] = [
     'DELETE',
     '/lines/:id/device-account',
     async ({ req, params }) => {
-      const user = await requireUser(req);
+      const user = await requireUser(req, { roles: ['admin', 'operator'] });
       const lineId = uuid(params.id);
       const rows = await sql`update lines set device_account_enc = null, device_account_updated_at = null, updated_at = now()
                              where id = ${lineId} returning number`;

@@ -199,9 +199,11 @@ export default function Lines() {
                 <td>{l.project ?? '—'}</td>
                 <td>{formatDate(l.deliveryDate)}</td>
                 <td className="actions">
-                  <button className="btn small" onClick={() => setEditing(l)}>
-                    {admin ? 'Editar' : 'Trocar usuário'}
-                  </button>
+                  {user?.role !== 'viewer' && (
+                    <button className="btn small" onClick={() => setEditing(l)}>
+                      {admin ? 'Editar' : 'Trocar usuário'}
+                    </button>
+                  )}
                   <button className="btn small ghost" onClick={() => setHistory(l)}>
                     Histórico
                   </button>

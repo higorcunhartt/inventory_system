@@ -83,6 +83,10 @@ create table if not exists rate_limits (
 
 alter table users add column if not exists token_version int not null default 0;
 
+-- Perfil viewer = somente consulta (ex.: aprendizes)
+alter table users drop constraint if exists users_role_check;
+alter table users add constraint users_role_check check (role in ('admin', 'operator', 'viewer'));
+
 create or replace function ensure_one_active_admin() returns trigger language plpgsql as $$
 begin
   if old.role = 'admin' and old.active and not (new.role = 'admin' and new.active) then

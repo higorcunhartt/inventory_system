@@ -44,7 +44,7 @@ export default function Users() {
         </button>
       </div>
       <p className="muted">
-        <strong>Equipe</strong> pode apenas trocar o usuário e a data de entrega das linhas. <strong>Administrador</strong> tem acesso total, inclusive consumo.
+        <strong>Consulta</strong> só visualiza as linhas e o histórico (sem editar nem ver contas de aparelho). <strong>Equipe</strong> pode apenas trocar o usuário e a data de entrega das linhas. <strong>Administrador</strong> tem acesso total, inclusive consumo.
         Cada pessoa define a própria senha por um link enviado ao e-mail dela; o administrador nunca define nem vê senhas.
       </p>
       {notice && <p className="ok">{notice}</p>}
@@ -67,6 +67,7 @@ export default function Users() {
                 <td>{u.email}</td>
                 <td>
                   <select value={u.role} disabled={u.id === me?.id} onChange={(e) => patch(u, { role: e.target.value }, `Alterar perfil de ${u.name}`)} aria-label={`Perfil de ${u.name}`}>
+                    <option value="viewer">Consulta</option>
                     <option value="operator">Equipe</option>
                     <option value="admin">Administrador</option>
                   </select>
@@ -169,6 +170,7 @@ function UserForm({ onClose }: { onClose: () => void }) {
         <label>
           Perfil
           <select value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="viewer">Consulta (somente leitura)</option>
             <option value="operator">Equipe (só troca usuário/entrega)</option>
             <option value="admin">Administrador</option>
           </select>

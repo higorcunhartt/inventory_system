@@ -40,7 +40,7 @@ export async function loadSchema() {
   for (const stmt of splitSql(readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8'))) await db.query(stmt);
 }
 
-export async function addUser(email: string, name: string, role: 'admin' | 'operator', password = 'senha-super-segura', mustChange = false) {
+export async function addUser(email: string, name: string, role: 'admin' | 'operator' | 'viewer', password = 'senha-super-segura', mustChange = false) {
   const r = await db.query(
     `insert into users (email, name, password_hash, role, must_change_password) values ($1, $2, $3, $4, $5) returning id`,
     [email, name, await hashPassword(password), role, mustChange],

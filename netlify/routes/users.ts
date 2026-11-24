@@ -7,7 +7,7 @@ import { sendPasswordLinkEmail } from '../lib/mail.ts';
 import { issueLink, revokeLinks } from '../lib/password-links.ts';
 import { corporateEmail, reqStr, uuid } from '../lib/validate.ts';
 
-const ROLES = ['admin', 'operator'];
+const ROLES = ['admin', 'operator', 'viewer'];
 
 const toUser = (u: Record<string, any>) => ({
   id: u.id,
