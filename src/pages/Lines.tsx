@@ -248,7 +248,6 @@ export default function Lines() {
       {accountFor && (
         <DeviceAccountModal
           line={accountFor}
-          admin={!!admin}
           onClose={() => setAccountFor(null)}
           onChanged={() => {
             load();
@@ -374,7 +373,7 @@ function LineForm({ line, admin, carriers, projects, devices, onAccount, onClose
   );
 }
 
-function DeviceAccountModal({ line, admin, onClose, onChanged }: { line: Line; admin: boolean; onClose: () => void; onChanged: () => void }) {
+function DeviceAccountModal({ line, onClose, onChanged }: { line: Line; onClose: () => void; onChanged: () => void }) {
   const [has, setHas] = useState(line.hasDeviceAccount);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -518,13 +517,9 @@ function DeviceAccountModal({ line, admin, onClose, onChanged }: { line: Line; a
         )}
         {error && <p className="error full">{error}</p>}
         <div className="row between full">
-          {admin ? (
-            <button type="button" className="btn danger" onClick={remove} disabled={busy || !has}>
-              Remover credenciais
-            </button>
-          ) : (
-            <span />
-          )}
+          <button type="button" className="btn danger" onClick={remove} disabled={busy || !has}>
+            Remover credenciais
+          </button>
           <div className="row">
             <button type="button" className="btn" onClick={onClose}>
               Fechar

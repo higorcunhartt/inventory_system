@@ -74,12 +74,14 @@ test('auditoria registra quem viu/alterou, sem e-mail nem senha', async () => {
   assert.ok(!hist.includes('SEGREDO-AUDITORIA') && !hist.includes('segredo.auditoria'));
 });
 
-test('equipe cadastra, mas só o administrador remove', async () => {
+test('equipe cadastra e remove; sem sessão não remove', async () => {
   const id = await create();
   assert.equal((await call('PUT', `/lines/${id}/device-account`, { email: GMAIL, password: GPASS }, team)).status, 200);
-  assert.equal((await call('DELETE', `/lines/${id}/device-account`, undefined, team)).status, 403);
+  assert.equal((await call('DELETE', `/lines/${id}/device-account`)).status, 401);
   assert.equal((await call('GET', '/lines', undefined, team)).data.lines.find((l: any) => l.id === id).hasDeviceAccount, true);
-  assert.equal((await call('DELETE', `/lines/${id}/device-account`, undefined, admin)).status, 200);
+  assert.equal((await call('DELETE', `/lines/${id}/device-account`, undefined, team)).status, 200);
+  const audit = JSON.stringify((await db.query(`select action, actor_email from audit_log where action = 'device_account_deleted'`)).rows);
+  assert.ok(audit.includes('ti@x.com'));
   assert.equal((await call('GET', '/lines', undefined, team)).data.lines.find((l: any) => l.id === id).hasDeviceAccount, false);
   assert.equal((await call('POST', `/lines/${id}/device-account/reveal`, { confirmPassword: PW }, admin)).status, 404);
 });

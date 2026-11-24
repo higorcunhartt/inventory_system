@@ -294,8 +294,7 @@ export const lineRoutes: Route[] = [
     },
   ],
 
-  // Conta de e-mail (ex.: Gmail padrão) configurada no aparelho. Administradores e equipe de TI veem e cadastram; só administradores
-  // removem. Fica cifrada, nunca aparece na listagem e a senha só é entregue depois de a pessoa confirmar a própria senha do sistema.
+  // Conta de e-mail (ex.: Gmail padrão) configurada no aparelho. Administradores e equipe de TI veem, cadastram e removem. Fica cifrada, nunca aparece na listagem e a senha só é entregue depois de a pessoa confirmar a própria senha do sistema.
   // Nada disso entra na auditoria nem no histórico (só quem viu/alterou e quando).
   [
     'POST',
@@ -338,7 +337,7 @@ export const lineRoutes: Route[] = [
     'DELETE',
     '/lines/:id/device-account',
     async ({ req, params }) => {
-      const user = await requireUser(req, { roles: ['admin'] });
+      const user = await requireUser(req);
       const lineId = uuid(params.id);
       const rows = await sql`update lines set device_account_enc = null, device_account_updated_at = null, updated_at = now()
                              where id = ${lineId} returning number`;
